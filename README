@@ -1,0 +1,6 @@
+cheat programming language
+
+$ rebar compile
+$ make
+$ ./bin/hello
+1

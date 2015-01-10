@@ -1,9 +1,9 @@
 -module(cheat_ccodegen).
 
--export([codegen/2]).
+-export([codegen/3]).
 
 
-codegen(MainModule, {BIFS, Funs, Atoms, NConst, Consts}) ->
+codegen(MainModule, {BIFS, Funs, Atoms, NConst, Consts}, BIFDir) ->
     NBIFS = length(BIFS),
     {BIFHeaders, BIFBodies} = lists:unzip(BIFS),
     BIFHeaderMap =
@@ -18,8 +18,8 @@ codegen(MainModule, {BIFS, Funs, Atoms, NConst, Consts}) ->
     Funs1 = lists:zip(lists:seq(0,NFuns-1), FunBodies),
     MainLabel = dict:fetch({MainModule, main,0}, FunHeaderMap),
 
-    [include_file("header.c"),
-     [include_file(File) || {_,_,File}<- BIFBodies],
+    [include_file("prologue.c", BIFDir),
+     [include_file(File, BIFDir) || {_,_,File}<- BIFBodies],
      "T (*BIF[])()={",
      string:join([gen_bif(B) || B <- BIFBodies], ","),
      "};\n",
@@ -35,12 +35,12 @@ codegen(MainModule, {BIFS, Funs, Atoms, NConst, Consts}) ->
      io_lib:format("C(r,FN(~w))", [MainLabel]),
      "RT 0;",
      [ gen_funbody(F) || F <- Funs1 ],
-     "}"
+     "}\n"
     ].
 
 
-include_file(File) ->
-    {ok, Content} = file:read_file(File),
+include_file(File, BIFDir) ->
+    {ok, Content} = file:read_file(filename:join([BIFDir,File])),
     Content.
 
 gen_atom(Atom) ->

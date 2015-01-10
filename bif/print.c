@@ -1,5 +1,5 @@
 T print(T i) {
   if (TYPE(i)!=TI){E();};
-  printf("%d\n",(i>>5));
+  printf("%lu\n",RAW(i));
   return INT(0);
 }
