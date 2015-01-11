@@ -36,7 +36,7 @@ transform_expression({varname, _, VarName} = Expr, {Scopes, NFun, Funs, ModuleNa
 
 transform_expression({tuple, Expressions}, State) ->
     {Expressions1, State1} = lists:mapfoldl(fun transform_expression/2, State, Expressions),
-    {{call, {atom, none, std}, {atom, none, make_tuple}, Expressions1}, State1};
+    {{call, {atom, none, std}, {atom, none, make_tuple}, [{literal, {integer, none, length(Expressions1)}}|Expressions1]}, State1};
 
 transform_expression({list, [], B}, State) ->
     transform_expression(B, State);

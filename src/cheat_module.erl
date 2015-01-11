@@ -97,6 +97,7 @@ read_source_code(BaseName) ->
             Forms = cheat_parse:string(Content),
             Forms1 = cheat_scope:transform(Forms, ModuleName),
             Forms2 = cheat_linearize:transform(Forms1),
+            %% io:format("~p~n~p~n~p~n", [Forms, Forms1, Forms2]),
             {ok, cheat_literal:transform(Forms2)};
         {error, _} ->
             not_found

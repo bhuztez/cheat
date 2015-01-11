@@ -6,7 +6,7 @@ ELFS = $(CHT_SRCS:examples/%.cht=bin/%)
 all: $(ELFS)
 
 bin/%: examples/%.cht | bin
-	escript cheatc.erl "$<" | gcc -o "$@" -Wall -Wextra -Werror -Wno-unused-label -Wno-varargs -x c -
+	escript cheatc.erl "$<" | gcc -g -o "$@" -Wall -Wextra -Wno-unused-label -Wno-varargs -x c -
 
 bin:
 	mkdir bin

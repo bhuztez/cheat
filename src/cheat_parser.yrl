@@ -1,5 +1,5 @@
 Nonterminals
-forms form clause_list clause
+forms form clause_list clause clause_body
 expression_list expression lc_expression_list lc_expression
 case_clause_list case_clause uminus.
 
@@ -38,22 +38,25 @@ form -> clause_list '.':
 clause_list -> clause_list ';' clause:
     '$1' ++ ['$3'].
 
-clause_list -> varname clause:
-    [{clause, '$1', '$2'}].
-
-clause_list -> atom clause:
-    [{clause, '$1', '$2'}].
-
 clause_list -> clause:
-    [{clause, ignore, '$1'}].
+    ['$1'].
 
-clause -> '(' ')' '->' expression_list:
+clause -> varname clause_body:
+    {clause, '$1', '$2'}.
+
+clause -> atom clause_body:
+    {clause, '$1', '$2'}.
+
+clause -> clause_body:
+    {clause, ignore, '$1'}.
+
+clause_body -> '(' ')' '->' expression_list:
     {[], [], '$4'}.
 
-clause -> '(' expression_list ')' '->'  expression_list:
+clause_body -> '(' expression_list ')' '->'  expression_list:
     {'$2', [], '$5'}.
 
-clause -> '(' expression_list ')' when expression_list '->'  expression_list:
+clause_body -> '(' expression_list ')' when expression_list '->'  expression_list:
     {'$2', '$5', '$7'}.
 
 expression_list -> expression_list ',' expression:

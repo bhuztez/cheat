@@ -31,9 +31,9 @@ codegen(MainModule, {BIFS, Funs, Atoms, NConst, Consts}, BIFDir) ->
      "\nint main() {\n",
      [ gen_fun(N) || N <- Funs1],
      [ gen_const(C, BIFHeaderMap, FunHeaderMap) || C <- Consts ],
-     "T r;",
-     io_lib:format("C(r,FN(~w))", [MainLabel]),
-     "RT 0;",
+     "\nT r;",
+     io_lib:format("C(r,F(~w))", [MainLabel]),
+     "RT 0;\n",
      [ gen_funbody(F) || F <- Funs1 ],
      "}\n"
     ].
@@ -50,16 +50,18 @@ gen_bif({_, Name, _}) ->
     io_lib:format("~s", [Name]).
 
 gen_fun({N, {fundef, _, NArg, _, NVar, _}}) ->
-    io_lib:format("F(~w,f~w,~w,~w)", [N, N, NArg, NVar]).
+    io_lib:format("FN(~w,f~w,~w,~w)", [N, N, NArg, NVar]).
 
+gen_const({N, nil}, _, _) ->
+    io_lib:format("C[~w]=TN;", [N]);
 gen_const({N, {integer, I}}, _, _) ->
-    io_lib:format("C[~w]=INT(~w);", [N, I]);
+    io_lib:format("C[~w]=I(~w);", [N, I]);
 gen_const({N, {funref, F}}, BIFHeaderMap, FunHeaderMap) ->
     case dict:find(F, BIFHeaderMap) of
         {ok, NB} ->
-            io_lib:format("C[~w]=BF(~w);", [N, NB]);
+            io_lib:format("C[~w]=P(~w);", [N, NB]);
         error ->
-            io_lib:format("C[~w]=FN(~w);", [N, dict:fetch(F, FunHeaderMap)])
+            io_lib:format("C[~w]=F(~w);", [N, dict:fetch(F, FunHeaderMap)])
     end.
 
 
@@ -71,22 +73,22 @@ gen_funbody({N, {fundef, _, _, _, _, Insts}}) ->
 
 gen_inst({call, Fun, Args, Result}, _) ->
     io_lib:format(
-      "C(~s,~s,~s)",
+      "C(~s,~s,~s)\n",
       [gen_var(Result),
        gen_var(Fun),
        gen_vars(Args)]);
 gen_inst({move, S, T}, _) ->
-    io_lib:format("M(~s,~s)", [gen_var(S),gen_var(T)]);
+    io_lib:format("M(~s,~s)~n", [gen_var(S),gen_var(T)]);
 gen_inst({label, L}, N) ->
-    io_lib:format("~nl~w_~w:", [N,L]);
+    io_lib:format("l~w_~w:~n", [N,L]);
 gen_inst({jump, L}, N) ->
-    io_lib:format("J(l~w_~w)", [N,L]);
+    io_lib:format("J(l~w_~w)~n", [N,L]);
 gen_inst(badmatch, _) ->
-    "E();";
+    "X();\n";
 gen_inst({branch, V, L}, N) ->
-    io_lib:format("B(~s,l~w_~w)", [gen_var(V), N,L]);
+    io_lib:format("B(~s,l~w_~w)~n", [gen_var(V), N,L]);
 gen_inst({return, V}, _) ->
-    io_lib:format("R(~s)", [gen_var(V)]).
+    io_lib:format("R(~s)~n", [gen_var(V)]).
 
 
 gen_var({a,N}) ->

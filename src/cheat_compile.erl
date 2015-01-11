@@ -11,7 +11,7 @@ compile(Filename) ->
         cheat_module:load_functions(
           ModuleName,
           [dirname(Filename), join([Dir, "lib"])]),
-
+    %% io:format("~p~n", [Functions]),
     Funs1 = cheat_constant:transform(Functions),
     Output = cheat_ccodegen:codegen(ModuleName, Funs1, join([Dir, "bif"])),
     io:format("~s", [Output]).

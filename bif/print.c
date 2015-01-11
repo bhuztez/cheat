@@ -1,5 +1,5 @@
-T print(T i) {
-  if (TYPE(i)!=TI){E();};
-  printf("%lu\n",RAW(i));
-  return INT(0);
+T print(T i){
+IFNT(i,TI)X();
+printf("%lu\n",INT(i));
+return I(0);
 }

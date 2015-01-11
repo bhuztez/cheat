@@ -2,5 +2,6 @@ cheat programming language
 
 $ rebar compile
 $ make
-$ ./bin/hello
-1
+$ ./bin/sum
+15
+6

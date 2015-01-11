@@ -107,22 +107,25 @@ transform_matchspec({match_tuple, MatchSpecs}, {VarNum, EndLabel, NLabel, NVar, 
     NM = length(MatchSpecs),
     Insts =
         [[{literal, {funref, none, {std, is_tuple, 2}}, NVar},
-          {call, NVar, [VarNum, NM], NVar+1},
-          {branch, NVar+1, EndLabel}]],
+          {literal, {integer, none, NM}, NVar+1},
+          {call, NVar, [VarNum, NVar+1], NVar+2},
+          {branch, NVar+2, EndLabel}]],
 
     {Insts1, {VarNum, EndLabel, NLabel1, NVar1, VarNameMap}} =
         lists:mapfoldl(
           fun transform_match_tuple_element/2,
-          {VarNum, EndLabel, NLabel, NVar+2, VarNameMap},
-          lists:zip(lists:seq(0, NM-1), MatchSpecs)),
+          {VarNum, EndLabel, NLabel, NVar+3, VarNameMap},
+          lists:zip(lists:seq(1, NM), MatchSpecs)),
 
     Insts2 = lists:append(Insts ++ Insts1),
     {Insts2, {VarNum, EndLabel, NLabel1, NVar1, VarNameMap}};
 transform_matchspec({match_list, [], B}, {VarNum, EndLabel, NLabel, NVar, VarNameMap}) ->
-    transform_matchspec(B, {VarNum, EndLabel, NLabel, NVar, VarNameMap});
+    {Insts, {EndLabel, NLabel1, NVar1, VarNameMap}} =
+        transform_matchspecs({VarNum,B}, {EndLabel, NLabel, NVar, VarNameMap}),
+    {Insts, {VarNum, EndLabel, NLabel1, NVar1, VarNameMap}};
 transform_matchspec({match_list, [H|T], B}, {VarNum, EndLabel, NLabel, NVar, VarNameMap}) ->
     Insts =
-        [ {literal, {funref, none, {std, is_list, 1}}, NVar},
+        [ {literal, {funref, none, {std, is_cons, 1}}, NVar},
           {literal, {funref, none, {std, head, 1}}, NVar+1},
           {literal, {funref, none, {std, tail, 1}}, NVar+2},
           {call, NVar, [VarNum], NVar+3},
@@ -130,8 +133,8 @@ transform_matchspec({match_list, [H|T], B}, {VarNum, EndLabel, NLabel, NVar, Var
           {call, NVar+1, [VarNum], NVar+4},
           {call, NVar+2, [VarNum], NVar+5} ],
 
-    {Insts1, {_, EndLabel, NLabel1, NVar1, VarNameMap}} =
-        transform_matchspec(H, {NVar+1, EndLabel, NLabel, NVar+6, VarNameMap}),
+    {Insts1, {EndLabel, NLabel1, NVar1, VarNameMap}} =
+        transform_matchspecs({NVar+4,H}, {EndLabel, NLabel, NVar+6, VarNameMap}),
 
     {Insts2, {_, EndLabel, NLabel2, NVar2, VarNameMap}} =
         transform_matchspec({match_list, T, B}, {NVar+5, EndLabel, NLabel1, NVar1, VarNameMap}),
@@ -145,9 +148,9 @@ transform_matchspec({match_ignore, _}, State) ->
 
 transform_match_tuple_element({N,MatchSpec}, {VarNum, EndLabel, NLabel, NVar, VarNameMap}) ->
     Insts =
-        [{literal, {funref, none, {std, get_element, 2}}, NVar},
+        [{literal, {funref, none, {std, element, 2}}, NVar},
          {literal, {integer, none, N}, NVar+1},
-         {call, NVar, [VarNum, NVar+1], NVar+2}],
+         {call, NVar, [NVar+1, VarNum], NVar+2}],
 
     {Insts1, {EndLabel, NLabel1, NVar1, VarNameMap}} =
         transform_matchspecs({NVar+2, MatchSpec}, {EndLabel, NLabel, NVar+3, VarNameMap}),

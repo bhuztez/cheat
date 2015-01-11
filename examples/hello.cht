@@ -1,5 +1,0 @@
-solve(N) ->
-    io:print(N).
-
-main() ->
-    solve(1).
