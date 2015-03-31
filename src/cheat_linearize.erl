@@ -37,6 +37,9 @@ transform_expression({literal, Literal}, {NLabel, NVar, VarNameMap}) ->
 transform_expression({make_fun, {atom, _, M}, {atom, _, F}, {integer, _, A}}, {NLabel, NVar, VarNameMap}) ->
     {{NVar, [{literal, {funref, none, {M, F, A}}, NVar}]}, {NLabel, NVar+1, VarNameMap}};
 
+transform_expression({make_fun, N, []}, {NLabel, NVar, VarNameMap}) ->
+    {{NVar, [{literal, {funref, none, N}, NVar}]}, {NLabel, NVar+1, VarNameMap}};
+
 transform_expression({make_fun, N, VarNames}, {NLabel, NVar, VarNameMap}) ->
     VarNums = [ dict:fetch(VarName, VarNameMap) || VarName <- VarNames ],
     {{NVar+2,
@@ -45,7 +48,7 @@ transform_expression({make_fun, N, VarNames}, {NLabel, NVar, VarNameMap}) ->
        {call, NVar, [NVar+1|VarNums], NVar+2}]},
      {NLabel, NVar+3, VarNameMap}};
 
-transform_expression({call, F, Expressions}, State) ->
+transform_expression({call, {varname, _, F}, Expressions}, State) ->
     {VarNums, Insts, {NLabel, NVar, VarNameMap}} = transform_expressions(Expressions, State),
     FNum = dict:fetch(F, VarNameMap),
     Insts1 = [[{call, FNum, VarNums, NVar}]],
@@ -81,8 +84,7 @@ transform_expressions(Expressions, State) ->
 transform_guard(Guard, {EndLabel, NLabel, NVar, VarNameMap}) ->
     {{VarNum, Insts}, {NLabel1, NVar1, VarNameMap}} =
         transform_expression(Guard, {NLabel, NVar, VarNameMap}),
-    Insts1 =
-        lists:append(Insts ++ [[{branch, VarNum, EndLabel}]]),
+    Insts1 = Insts ++ [{branch, VarNum, EndLabel}],
     {Insts1, {EndLabel, NLabel1, NVar1, VarNameMap}}.
 
 

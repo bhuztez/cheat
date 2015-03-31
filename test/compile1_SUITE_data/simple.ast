@@ -1,0 +1,9 @@
+[{fundef,{atom,main}, 0,
+  {'case', [],
+   [{ [],
+      [],
+      [{literal,{atom,1,ok}}]
+    }]
+  }
+ }
+].

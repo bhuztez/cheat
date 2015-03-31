@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+
+erl -pa "$(pwd)/ebin" -mode minimal -noinput -noshell -boot start_clean -s cheat_compile compile_cmdline -extra "$@"

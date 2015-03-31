@@ -40,18 +40,18 @@ load_function(F, Paths, LoadedModules) ->
     {Module, LoadedModules1} = find_module(ModuleName, Paths, LoadedModules),
     Function =
         case Module of
-            {cht, Mod} ->
-                dict:fetch(fundef_name(F), Mod);
             builtin ->
-                cheat_builtin:get_function(F)
+                cheat_builtin:get_function(F);
+            Mod ->
+                dict:fetch(fundef_name(F), Mod)
         end,
     {Function, LoadedModules1}.
 
 
 get_funrefs({fundef, _, _, _, _, Local, _}) ->
     [F || {funref, F} <- Local];
-get_funrefs({bif, _, _}) ->
-    [].
+get_funrefs({nif, _, _, Local}) ->
+    [F || {funref, F} <- Local].
 
 
 find_module(ModuleName, Paths, LoadedModules) ->
@@ -68,40 +68,16 @@ read_module(std, _) ->
     {ok, builtin};
 read_module(io, _) ->
     {ok, builtin};
-read_module(_, []) ->
-    not_found;
-read_module(ModuleName, [Path|Paths]) ->
-    BaseName = filename:join(Path, atom_to_list(ModuleName)),
-    case read_module(BaseName) of
-        {ok, Module} ->
-            {ok, {cht, Module}};
-        _ ->
-            read_module(ModuleName, Paths)
-    end.
-
-
-read_module(BaseName) ->
-    case read_source_code(BaseName) of
-        {ok, Bytecode} ->
-            Module = dict:from_list([transform_form(Form) || Form <- Bytecode]),
-            {ok, Module};
-        _ ->
-            not_found
-    end.
-
-
-read_source_code(BaseName) ->
-    ModuleName = list_to_atom(filename:basename(BaseName)),
-    case file:read_file(BaseName++".cht") of
-        {ok, Content} ->
-            Forms = cheat_parse:string(Content),
-            Forms1 = cheat_scope:transform(Forms, ModuleName),
-            Forms2 = cheat_linearize:transform(Forms1),
-            %% io:format("~p~n~p~n~p~n", [Forms, Forms1, Forms2]),
-            {ok, cheat_literal:transform(Forms2)};
-        {error, _} ->
-            not_found
-    end.
+read_module(gc, _) ->
+    {ok, builtin};
+read_module(ModuleName, Paths) ->
+    {ok, Content} = cheat_utils:path_read_file(Paths, [ModuleName, ".cht"]),
+    Forms = cheat_parse:string(Content),
+    Forms1 = cheat_scope:transform(Forms, ModuleName),
+    Forms2 = cheat_linearize:transform(Forms1),
+    Forms3 = cheat_literal:transform(Forms2),
+    Module =  dict:from_list([transform_form(Form) || Form <- Forms3]),
+    {ok, Module}.
 
 
 transform_form({fundef, F, NArg, _, _, _, _}=Form)

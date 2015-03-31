@@ -63,8 +63,8 @@ transform_expression({call, op, F, A}, State) ->
     {{call, {atom, none, std}, {atom, none, F}, A1}, State1};
 
 transform_expression({fundef, ignore, A, Expression}, State) ->
-    {{Local, NonLocal}, Expression1, {Scopes, NFun, Funs, {atom, _, M}= ModuleName}}= transform_funbody(Expression, State),
-    {{make_fun, {M, NFun}, NonLocal}, {Scopes, NFun+1, [{fundef, NFun, A, NonLocal, Local, Expression1}|Funs], ModuleName}};
+    {{Local, NonLocal}, Expression1, {Scopes, NFun, Funs, M}}= transform_funbody(Expression, State),
+    {{make_fun, {M, NFun}, NonLocal}, {Scopes, NFun+1, [{fundef, NFun, A, NonLocal, Local, Expression1}|Funs], M}};
 
 transform_expression({'fun', local, F, A}, {_, _, _, ModuleName} = State) ->
     {{make_fun, {atom, none, ModuleName}, F, A}, State};

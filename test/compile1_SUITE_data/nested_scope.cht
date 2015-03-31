@@ -1,0 +1,6 @@
+main(X) ->
+    fun (Y) ->
+            fun (Z) ->
+                    X + Y + Z
+            end
+    end.

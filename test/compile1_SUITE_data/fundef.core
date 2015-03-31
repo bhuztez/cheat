@@ -1,0 +1,6 @@
+[{fundef,0,1,[],
+         ['X'],
+         {'case',[{arg,0}],
+                 [{[[{assign,'X'}]],[],[{varname,2,'X'}]}]}},
+ {fundef,main,0,[],[],
+         {'case',[],[{[],[],[{make_fun,{fundef,0},[]}]}]}}].

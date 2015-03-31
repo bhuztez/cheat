@@ -1,0 +1,9 @@
+[{fundef,{atom,main},
+         0,
+         {'case',[],
+                 [{[],[],
+                   [{fundef,ignore,1,
+                            {'case',[{arg,0}],
+                                    [{[[{match_var,'X'}]],
+                                      [],
+                                      [{varname,2,'X'}]}]}}]}]}}].

@@ -1,0 +1,29 @@
+fun_guard(X)
+  when X > 1 ->
+    X;
+fun_guard(X)
+  when g(X) ->
+    X;
+fun_guard(X)
+  when [X|1] ->
+    X;
+fun_guard(X)
+  when [1, 2, X] ->
+    X;
+fun_guard(X)
+  when {X, 1} ->
+    X.
+
+case_guard(X) ->
+    case X of
+        _ when X > 1 ->
+            X;
+        _ when g(X) ->
+            X;
+        _ when [X|1] ->
+            X;
+        _ when [1,2,X] ->
+            X;
+        _ when {X, 1} ->
+            X
+    end.

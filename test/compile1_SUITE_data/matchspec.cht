@@ -1,0 +1,20 @@
+fun_clause(Z = {X, _}) ->
+    X + Z;
+fun_clause([X|Y]) ->
+    X - Y;
+fun_clause([X, _|Y]) ->
+    X + Y;
+fun_clause([X, Y]) ->
+    X + Y.
+
+case_clause(Z) ->
+    case Z of
+        1 = {1, _} -> x;
+        [1, _|X] -> X;
+        [1|X] -> X;
+        [1, X] -> X
+    end.
+
+match_expression() ->
+    X = {1,2} = [1,_|3] = [1|2] = [1,2] = 2,
+    X = {X,2} = [1,X|3] = [1|X] = [X,2] = 2.
