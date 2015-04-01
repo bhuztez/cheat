@@ -1,18 +1,28 @@
 -module(cheat_parse).
 
--export([file/1, string/1]).
+-export([transform/2]).
 
-file(Filename) ->
-    {ok, Content} = file:read_file(Filename),
-    string(Content).
 
-string(Source) ->
-    {ok, Tokens, _} = cheat_lexer:string(binary_to_list(Source)),
-    {ok, Forms} = cheat_parser:parse(Tokens),
-    [transform_form(Form) || Form <- Forms].
+transform(Forms, #{module := Module}) ->
+    [transform_form(Form, Module) || Form <- Forms].
 
-transform_form({'fun', _} = Fun) ->
-    {fundef, {atom, _}, _, _} = transform_fun(Fun).
+
+transform_form({'fun', Clauses}, Module) ->
+    {fundef, Line, {{atom, F}, A, Expr}} = transform_clauses(Clauses, Module),
+    {fundef, Line, {F, A, Expr}}.
+
+
+transform_clauses(Clauses, Module) ->
+    [{clause, Line, _}|_] = Clauses1 =
+        [transform_clause(Clause, Module) || Clause <- Clauses],
+    {true, {F, A}} =
+        all_same([{X,Y} || {clause, _, {X, Y, _, _, _}} <- Clauses1]),
+    {fundef, Line,
+     {F, A,
+      {'case', Line,
+       {[{arg, N} || N <- lists:seq(0, A-1)],
+        [{M, G, E} || {clause, _, {_, _, M, G, E}}<- Clauses1]}}}}.
+
 
 all_same([{F,A}|T]) ->
     all_same(T, {F,A}).
@@ -24,12 +34,15 @@ all_same([X|T], X) ->
 all_same(_, _) ->
     false.
 
-transform_fun({'fun', Clauses}) ->
-    Clauses1 = [transform_clause(Clause) || Clause <- Clauses],
-    {true, {F,A}} = all_same([{X,Y} || {clause, X, Y, _, _, _} <- Clauses1]),
-    {fundef, F, A,
-     {'case', [{arg, N}|| N <- lists:seq(0,A-1)],
-      [{M,G,E} || {clause, _, _, M, G, E} <- Clauses1]}}.
+
+transform_clause({clause, Line, {Name, MSs, Guards, Exprs}}, Module) ->
+    {clause, Line,
+     {clause_name(Name),
+      length(MSs),
+      [transform_ms(MS, Module) || MS <- MSs],
+      [transform_expr(Guard, Module) || Guard <- Guards],
+      [transform_expr(Expr, Module) || Expr <- Exprs]}}.
+
 
 clause_name(ignore) ->
     ignore;
@@ -38,102 +51,96 @@ clause_name({varname, _, Name}) ->
 clause_name({atom, _, Atom}) ->
     {atom, Atom}.
 
-transform_clause({clause, Name, {Matchspecs, Guards, Expressions}}) ->
-    {clause, clause_name(Name), length(Matchspecs),
-     [transform_matchspec(Matchspec) || Matchspec <- Matchspecs],
-     [transform_guard(Guard) || Guard <- Guards],
-     [transform_expression(Expression) || Expression <- Expressions]}.
 
-transform_matchspec({'case', _, _}) ->
+transform_ms({match, _, {A, B}}, Module) ->
+    transform_ms(A, Module) ++ transform_ms(B, Module);
+transform_ms({tuple, Line, MSs}, Module) ->
+    [{match_tuple, Line, [transform_ms(MS, Module) || MS <- MSs]}];
+transform_ms({list, Line, {A, B}}, Module) ->
+    [{match_list, Line,
+      {[transform_ms(MS, Module)||MS <- A], transform_ms(B, Module)}}];
+transform_ms({varname, Line, X}, _) ->
+    [{match_var, Line, X}];
+transform_ms({ignore, Line, X}, _) ->
+    [{match_ignore, Line, X}];
+transform_ms({literal, Line, X}, _) ->
+    [{match_literal, Line, X}];
+transform_ms({'fun', Line, {local,F,A}}, M) ->
+    [{match_fun, Line, {M,F,A}}];
+transform_ms({'fun', Line, {M,F,A}}, _) ->
+    [{match_fun, Line, {M,F,A}}];
+transform_ms({'case', _, _}, _) ->
     throw("illegal pattern");
-transform_matchspec({call, _, _, _}) ->
+transform_ms({call, _, _}, _) ->
     throw("illegal pattern");
-transform_matchspec({list_comprehension, _, _}) ->
+transform_ms({list_comprehension, _, _}, _) ->
     throw("illegal pattern");
-transform_matchspec({'fun', _}) ->
-    throw("illegal pattern");
-transform_matchspec({match, A, B}) ->
-    transform_matchspec(A) ++ transform_matchspec(B);
-transform_matchspec({tuple, Matchspecs}) ->
-    [{match_tuple,
-      [transform_matchspec(Matchspec) || Matchspec <- Matchspecs]}];
-transform_matchspec({list, A, B}) ->
-    [{match_list,
-      [transform_matchspec(Matchspec) || Matchspec <- A],
-      transform_matchspec(B)}];
-transform_matchspec({varname, _, X}) ->
-    [{match_var, X}];
-transform_matchspec({ignore, _, X}) ->
-    [{match_ignore, X}];
-transform_matchspec({literal, X}) ->
-    [{match_literal, X}];
-transform_matchspec({'fun', M,F,A}) ->
-    [{match_fun, M, F, A}].
+transform_ms({'fun', _, _}, _) ->
+    throw("illegal pattern").
 
-transform_guard({'case', _, _}) ->
-    throw("illegal guard");
-transform_guard({match, _, _}) ->
-    throw("illegal guard");
-transform_guard({list_comprehension, _, _}) ->
-    throw("illegal guard");
-transform_guard({ignore, _, _}) ->
-    throw("illegal guard");
-transform_guard({'fun', _}) ->
-    throw("illegal guard");
-transform_guard({tuple, Expressions}) ->
-    {tuple, [transform_guard(Expression) || Expression <- Expressions ]};
-transform_guard({list, A, B}) ->
-    {list,
-     [transform_guard(Expression) || Expression <- A],
-     transform_guard(B)};
-transform_guard({varname, _, _}=X) ->
-    X;
-transform_guard({literal, _} = X) ->
-    X;
-transform_guard({'fun',_,_,_}=X) ->
-    X;
-transform_guard({call, M, F, A}) ->
-    {call, M, F, [transform_guard(Expression)||Expression<-A]}.
 
-transform_expression({ignore, _, _}) ->
-    throw("illegal expression");
-transform_expression({list_comprehension, _, _}) ->
-    throw("TODO");
-transform_expression({varname, _, _}=X) ->
+transform_expr({varname, _, _}=X, _) ->
     X;
-transform_expression({literal, _} = X) ->
+transform_expr({literal, _, _}=X, _) ->
     X;
-transform_expression({'fun',_,_,_}=X) ->
-    X;
-transform_expression({tuple, Expressions}) ->
-    {tuple, [transform_expression(Expression) || Expression <- Expressions ]};
-transform_expression({list, A, B}) ->
-    {list,
-     [transform_expression(Expression) || Expression <- A],
-     transform_expression(B)};
-transform_expression({call, M, F, A}) ->
-    {call, M, F, [transform_expression(Expression)||Expression<-A]};
-transform_expression({'case', Expr, Clauses}) ->
-    {'case',
-     [transform_expression(Expr)],
-     [transform_case_clause(Clause) || Clause <- Clauses]};
-transform_expression({match, A, B}) ->
-    Matchspec = transform_matchspec(A),
-    case transform_expression(B) of
-        {'case', [Expression], [{[Matchspec1], [],[]}]} ->
-            {'case', [Expression], [{[Matchspec++Matchspec1], [], []}]};
-        Expression ->
-            {'case', [Expression], [{[Matchspec], [], []}]}
+
+transform_expr({'fun',Line,{local,F,A}}, M) ->
+    {make_fun, Line, {M,F,A}};
+transform_expr({'fun',Line,{M,F,A}}, _) ->
+    {make_fun, Line, {M,F,A}};
+transform_expr({tuple, Line, Exprs}, Module) ->
+    {call, Line,
+     {{make_fun, Line,
+       {{atom, Line, std},
+        {atom, Line, make_tuple},
+        {integer, Line, length(Exprs)}}},
+      [transform_expr(Expr, Module) || Expr <- Exprs]}};
+transform_expr({list, _, {[], B}}, _) ->
+    B;
+transform_expr({list, _, {[{_,Line,_} = H|T], B}}, Module) ->
+    {call, Line,
+     {{make_fun, Line,
+       {{atom, Line, std},
+        {atom, Line, cons},
+        {integer, Line, 2}}},
+     [transform_expr(H, Module),
+      transform_expr({list, Line, {T,B}}, Module)]}};
+transform_expr({call, Line, {var, F, A}}, M) ->
+    {call, Line, {F, [transform_expr(Expr, M)||Expr<-A]}};
+transform_expr({call, Line, {local, F, A}}, M) ->
+    {call, Line,
+     {{make_fun, Line, {{atom, Line, M}, F, {integer,Line,length(A)}}},
+      [transform_expr(Expr, M)||Expr<-A]}};
+transform_expr({call, Line, {M, F, A}}, Module) ->
+    {call, Line,
+     {{make_fun, Line, {M,F,{integer, Line, length(A)}}},
+      [transform_expr(Expr, Module)||Expr<-A]}};
+transform_expr({'case', Line, {Expr, Clauses}}, Module) ->
+    {'case', Line,
+     {[transform_expr(Expr, Module)],
+      [transform_case_clause(Clause, Module) || Clause <- Clauses]}};
+transform_expr({match, Line, {A, B}}, Module) ->
+    MS = transform_ms(A, Module),
+    case transform_expr(B, Module) of
+        {'case', _, {[Expr], [{[MS1], [], []}]}} ->
+            {'case', Line, {[Expr], [{[MS++MS1], [], []}]}};
+        Expr ->
+            {'case', Line, {[Expr], [{[MS], [], []}]}}
     end;
-transform_expression({'fun', _} = Fun) ->
-    case transform_fun(Fun) of
-        {'fun', {atom, _}, _, _} ->
+transform_expr({'fun', Line, Clauses}, Module) ->
+    case transform_clauses(Clauses, Module) of
+        {fundef, _, {{atom, _}, _, _}} ->
             throw("invalid fun");
-        Fun1 ->
-            Fun1
-    end.
+        {fundef, _, Fun} ->
+            {fundef, Line, Fun}
+    end;
+transform_expr({list_comprehension, _, _}, _) ->
+    throw("TODO");
+transform_expr({ignore, _, _}, _) ->
+    throw("illegal expression").
 
-transform_case_clause({Matchspec, Guards, Expressions}) ->
-    {[transform_matchspec(Matchspec)],
-     [transform_guard(Guard) || Guard <- Guards],
-     [transform_expression(Expression) || Expression <- Expressions]}.
+
+transform_case_clause({MS, Guards, Exprs}, Module) ->
+    {[transform_ms(MS, Module)],
+     [transform_expr(Expr, Module) || Expr <- Guards],
+     [transform_expr(Expr, Module) || Expr <- Exprs]}.

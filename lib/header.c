@@ -25,6 +25,7 @@ enum tag {
 #define BR(X) if ((X) == a_false) goto
 #define V(X) (stack->vars[(X)])
 #define BADMATCH badmatch(__FUNCTION__)
+#define SET_LINE(X) stack->line_num=(X)
 
 #define CP(l) c##l
 
@@ -39,15 +40,11 @@ CP(l):;                                         \
     CALL(__COUNTER__,(r),(f),##__VA_ARGS__);    \
   }                                             \
 
-void badmatch(char const *s) __attribute__((noreturn));
-void badmatch(char const *s) {
-  fprintf(stderr, "badmatch %s\n", s);
-  exit(1);
-}
-
 struct frame {
   struct frame *next_frame;
   void *cp;
+  T fun_num;
+  T line_num;
   T *result;
   T n;
   T vars[];
@@ -57,6 +54,9 @@ struct fun {
   void *addr;
   T nargs;
   T nvars;
+  char *name;
+  char *filename;
+  T line;
 };
 
 struct list {
@@ -72,11 +72,30 @@ struct tuple {
 struct frame *stack = NULL;
 struct fun *F = NULL;
 
+void badmatch(char const *s) __attribute__((noreturn));
+void badmatch(char const *s) {
+  fprintf(stderr, "ERROR: badmatch in %s\n", s);
+  fprintf(stderr, "STACKTRACE:\n");
+
+  for(;stack;stack=stack->next_frame) {
+    struct fun *fun = &(F[stack->fun_num]);
+    fprintf(stderr,
+            "  File '%s', line %lu, in '%s' at line %lu\n",
+            fun->filename,
+            stack->line_num,
+            fun->name,
+            fun->line);
+  }
+  exit(1);
+}
+
 void *call(void *cp, T *result, T f, ...) {
   if (TAG(f)==TAG_FUN) {
     f = VALUE(f);
     struct frame *frame = (struct frame *)term_alloc(sizeof(struct frame) + sizeof(T)*(F[f].nvars));
     term_set_tag(frame, TAG_FRAME);
+    frame->fun_num = f;
+    frame->line_num = F[f].line;
     frame->next_frame = stack;
     frame->cp = cp;
     frame->result = result;
@@ -102,7 +121,7 @@ void *pop_frame(T result) {
   return cp;
 }
 
-static T const nil = A(0);
+#define nil A(0)
 
 void gc_mark() {
   void *terms[default_pool.free_blocks * 2 + 1];

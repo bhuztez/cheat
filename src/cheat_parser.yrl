@@ -42,22 +42,22 @@ clause_list -> clause:
     ['$1'].
 
 clause -> varname clause_body:
-    {clause, '$1', '$2'}.
+    clause('$1', '$2').
 
 clause -> atom clause_body:
-    {clause, '$1', '$2'}.
+    clause('$1', '$2').
 
 clause -> clause_body:
-    {clause, ignore, '$1'}.
+    clause(ignore, '$1').
 
 clause_body -> '(' ')' '->' expression_list:
-    {[], [], '$4'}.
+    {body, line_of('$1'), {[], [], '$4'}}.
 
 clause_body -> '(' expression_list ')' '->'  expression_list:
-    {'$2', [], '$5'}.
+    {body, line_of('$1'), {'$2', [], '$5'}}.
 
 clause_body -> '(' expression_list ')' when expression_list '->'  expression_list:
-    {'$2', '$5', '$7'}.
+    {body, line_of('$1'), {'$2', '$5', '$7'}}.
 
 expression_list -> expression_list ',' expression:
     '$1' ++ ['$3'].
@@ -69,124 +69,125 @@ expression -> '(' expression ')':
     '$2'.
 
 expression -> not expression:
-    {call, op, 'not', ['$2']}.
+    op1('not', '$1', '$2').
+
 
 expression -> uminus:
     '$1'.
 
 uminus -> '-' expression:
-    {call, op, neg, ['$2']}.
+    op1(neg, '$1', '$2').
 
 expression -> expression '**' expression:
-    {call, op, pow, ['$1', '$3']}.
+    op2(pow, '$1', '$2', '$3').
 
 expression -> expression '*' expression:
-    {call, op, mul, ['$1', '$3']}.
+    op2(mul, '$1', '$2', '$3').
 
 expression -> expression '/' expression:
-    {call, op, 'div', ['$1', '$3']}.
+    op2('div', '$1', '$2', '$3').
 
 expression -> expression '%' expression:
-    {call, op, mod, ['$1', '$3']}.
+    op2('mod', '$1', '$2', '$3').
 
 expression -> expression '+' expression:
-    {call, op, plus, ['$1', '$3']}.
+    op2(plus, '$1', '$2', '$3').
 
 expression -> expression '-' expression:
-    {call, op, minus, ['$1', '$3']}.
+    op2(minus, '$1', '$2', '$3').
 
 expression -> expression '==' expression:
-    {call, op, eq, ['$1', '$3']}.
+    op2(eq, '$1', '$2', '$3').
 
 expression -> expression '/=' expression:
-    {call, op, ne, ['$1', '$3']}.
+    op2(ne, '$1', '$2', '$3').
 
 expression -> expression '<' expression:
-    {call, op, lt, ['$1', '$3']}.
+    op2(lt, '$1', '$2', '$3').
 
 expression -> expression '=<' expression:
-    {call, op, le, ['$1', '$3']}.
+    op2(le, '$1', '$2', '$3').
 
 expression -> expression '>=' expression:
-    {call, op, ge, ['$1', '$3']}.
+    op2(ge, '$1', '$2', '$3').
 
 expression -> expression '>' expression:
-    {call, op, gt, ['$1', '$3']}.
+    op2(gt, '$1', '$2', '$3').
 
 expression -> expression '=:=' expression:
-    {call, op, exact, ['$1', '$3']}.
+    op2(exact, '$1', '$2', '$3').
 
 expression -> expression '=/=' expression:
-    {call, op, notexact, ['$1', '$3']}.
+    op2(notexact, '$1', '$2', '$3').
 
 expression -> expression and expression:
-    {call, op, 'and', ['$1', '$3']}.
+    op2('and', '$1', '$2', '$3').
 
 expression -> expression or expression:
-    {call, op, 'or', ['$1', '$3']}.
+    op2('or', '$1', '$2', '$3').
 
 expression -> expression '=' expression:
-    {match, '$1', '$3'}.
+    {match, line_of('$2'), {'$1', '$3'}}.
 
 expression -> atom ':' atom '(' ')':
-    {call, '$1', '$3', []}.
+    {call, line_of('$3'), {'$1', '$3', []}}.
 
 expression -> atom ':' atom '(' expression_list ')':
-    {call, '$1', '$3', '$5'}.
+    {call, line_of('$3'), {'$1', '$3', '$5'}}.
 
 expression -> atom '(' ')':
-    {call, local, '$1', []}.
+    {call, line_of('$1'), {local, '$1', []}}.
 
 expression -> atom '(' expression_list ')':
-    {call, local, '$1', '$3'}.
+    {call, line_of('$1'), {local, '$1', '$3'}}.
 
 expression -> varname '(' ')':
-    {call, var, '$1', []}.
+    {call, line_of('$1'), {var, '$1', []}}.
 
 expression -> varname '(' expression_list ')':
-    {call, var, '$1', '$3'}.
+    {call, line_of('$1'), {var, '$1', '$3'}}.
 
 expression -> case expression of case_clause_list end:
-    {'case', '$2', '$4'}.
+    {'case', line_of('$1'), {'$2', '$4'}}.
 
 expression -> fun atom '/' integer:
-    {'fun', local, '$2', '$4'}.
+    {'fun', line_of('$1'), {local, '$2', '$4'}}.
 
 expression -> fun atom ':' atom '/' integer:
-    {'fun', '$2', '$4', '$6'}.
+    {'fun', line_of('$1'), {'$2', '$4', '$6'}}.
 
 expression -> fun clause_list end:
-    {'fun', '$2'}.
+    {'fun', line_of('$1'), '$2'}.
 
 expression -> '{' '}':
-    {tuple, []}.
+    {tuple, line_of('$1'), []}.
 
 expression -> '{' expression_list '}':
-    {tuple, '$2'}.
+    {tuple, line_of('$1'), '$2'}.
 
 expression -> '[' ']':
-    {list, [], {literal, nil}}.
+    {literal, line_of('$1'), nil}.
 
 expression -> '[' expression_list ']':
-    {list, '$2', {literal, nil}}.
+    {list, line_of('$1'), {'$2', {literal, line_of('$3'), nil}}}.
 
 expression -> '[' expression_list '|' expression ']':
-    {list, '$2', '$4'}.
+    {list, line_of('$1'), {'$2', '$4'}}.
 
 expression -> '[' expression '||' lc_expression_list ']':
-    {list_comprehension, '$2', '$4'}.
+    {list_comprehension, line_of('$1'), {'$2', '$4'}}.
 
 expression -> varname:
     '$1'.
 
 expression -> atom:
-    {literal, '$1'}.
+    literal('$1').
 
 expression -> integer:
-    {literal, '$1'}.
+    literal('$1').
 
 expression -> string:
-    {literal, '$1'}.
+    literal('$1').
 
 expression -> ignore:
     '$1'.
@@ -201,7 +202,7 @@ lc_expression -> expression:
     '$1'.
 
 lc_expression -> expression '<-' expression:
-    {generate, '$1', '$3'}.
+    {generate, line_of('$1'), {'$1', '$3'}}.
 
 case_clause_list -> case_clause_list ';' case_clause:
     '$1' ++ ['$3'].
@@ -210,9 +211,34 @@ case_clause_list -> case_clause:
     ['$1'].
 
 case_clause -> expression '->' expression_list:
-    {'$1', [], '$3'}.
+    {case_clause, line_of('$1'), {'$1', [], '$3'}}.
 
 case_clause -> expression when expression_list '->' expression_list:
-    {'$1', '$3', '$5'}.
+    {case_clause, line_of('$1'), {'$1', '$3', '$5'}}.
 
 Erlang code.
+
+literal(T) ->
+    {literal, line_of(T), T}.
+
+line_of(Token) ->
+    element(2, Token).
+
+op1(Op, T1, T2) ->
+    {call,
+     line_of(T1),
+     {{atom, line_of(T1), std},
+      {atom, line_of(T1), Op},
+      [T2]}}.
+
+op2(Op, T1, T2, T3) ->
+    {call,
+     line_of(T2),
+     {{atom, line_of(T2), std},
+      {atom, line_of(T2), Op},
+      [T1, T3]}}.
+
+clause(ignore, {body, Line, {M,G,E}}) ->
+    {clause, Line, {ignore, M, G, E}};
+clause(Name, {body, _, {M,G,E}}) ->
+    {clause, line_of(Name), {Name, M, G, E}}.

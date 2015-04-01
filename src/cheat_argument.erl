@@ -6,18 +6,27 @@
 parse(Arguments) ->
     {Options, FileName} = parse_options(Arguments),
 
-    LibDirs = lists:append(proplists:get_all_values('L', Options)),
-    Opts1 = [{libdir, [code:lib_dir(cheat, lib)|LibDirs]}],
-
-    Opts2 =
-        case proplists:lookup(emit, Options) of
-            {emit, [H|_]} ->
-                [{emit, list_to_atom(H)}|Opts1];
+    LibDirs =
+        [code:lib_dir(cheat, lib)|
+         lists:append(proplists:get_all_values('L', Options))],
+    Opts1 =
+        case FileName of
+            none ->
+                #{libdir => LibDirs};
             _ ->
-                Opts1
+                Module =
+                    list_to_atom(filename:basename(FileName, ".cht")),
+                #{filename => FileName,
+                  module => Module,
+                  libdir => [filename:dirname(FileName)|LibDirs]}
         end,
 
-    {FileName, Opts2}.
+    case proplists:lookup(emit, Options) of
+        {emit, [H|_]} ->
+            Opts1#{emit => list_to_atom(H)};
+        _ ->
+            Opts1
+    end.
 
 
 parse_options([]) ->

@@ -1,0 +1,9 @@
+test() ->
+    io:print(std:heap_info(free)).
+
+main() ->
+    io:print(std:heap_info(free)),
+    test(),
+    std:gc(),
+    io:print(std:heap_info(free)),
+    a=b.

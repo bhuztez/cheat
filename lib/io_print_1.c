@@ -1,4 +1,4 @@
-T io_print(T i){
+T io_print_1(T i){
   if (TAG(i) != TAG_INT)
     BADMATCH;
   

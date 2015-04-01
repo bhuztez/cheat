@@ -16,7 +16,7 @@ typedef uintptr_t T;
 struct block_header {
   unsigned int prev_size : 24;
   unsigned int size      : 24;
-  unsigned int used      : 1;
+  unsigned int free      : 1;
   unsigned int marked    : 1;
   unsigned int tag       : 14;
 } __attribute__((packed));
@@ -29,6 +29,15 @@ struct free_block {
 
 #define PAGE_SIZE 4096
 #define MMAP_BASE 0x10000000
+
+void alloc_page(void *addr, size_t length) {
+  assert(MAP_FAILED !=
+         mmap(addr,
+              length,
+              PROT_READ|PROT_WRITE,
+              MAP_ANONYMOUS|MAP_PRIVATE|MAP_FIXED,
+              -1, 0));
+}
 
 /* fli number of words
  *   2 16 +0 +2 +4 +6 +8 +10 +12 +14
@@ -114,7 +123,7 @@ struct free_block *find_suitable_block(size_t nwords) {
 }
 
 void insert_block(struct free_block *block) {
-  block->header.used = 0;
+  block->header.free = 1;
   block->prev_block = NULL;
   default_pool.free_size += block->header.size;
   default_pool.free_blocks += 1;
@@ -122,13 +131,17 @@ void insert_block(struct free_block *block) {
   int fli, sli;
   mapping_insert(block->header.size, &fli, &sli);
   block->next_block = default_pool.free_block_list[fli][sli];
+
+  if (block->next_block) {
+    block->next_block->prev_block = block;
+  }
   default_pool.free_block_list[fli][sli] = block;
   default_pool.sl_bitmap[fli] |= 1 << sli;
   default_pool.fl_bitmap |= 1 << fli;
 }
 
 void remove_block(struct free_block *block) {
-  block->header.used = 1;
+  block->header.free = 0;
   default_pool.free_size -= block->header.size;
   default_pool.free_blocks -= 1;
 
@@ -184,7 +197,7 @@ struct block_header *find_next_block(struct block_header *header) {
 
 struct block_header *merge_left_block(struct block_header *block) {
   struct block_header *left_block = find_prev_block(block);
-  if ((left_block < get_blocks_begin()) || (left_block->used))
+  if ((left_block < get_blocks_begin()) || (!(left_block->free)))
     return block;
 
   remove_block((struct free_block *)left_block);
@@ -198,7 +211,7 @@ struct block_header *merge_left_block(struct block_header *block) {
 
 struct block_header *merge_right_block(struct block_header *block) {
   struct block_header *right_block = find_next_block(block);
-  if ((right_block >= get_blocks_end()) || (right_block->used))
+  if ((right_block >= get_blocks_end()) || (!(right_block->free)))
     return block;
 
   remove_block((struct free_block *)right_block);
@@ -229,7 +242,7 @@ int term_get_mark(void *ptr) {
 void gc_sweep() {
   struct block_header * header = get_blocks_begin();
   for(; header < get_blocks_end(); header = find_next_block(header)) {
-    if (!header->used)
+    if (header->free)
       continue;
 
     if (header->marked) {
@@ -256,20 +269,14 @@ void *term_alloc(size_t size) {
     uintptr_t alloc_base = MMAP_BASE+PAGE_SIZE*default_pool.pages;
     size_t length;
 
-    if (default_pool.last_block && !(default_pool.last_block->used)) {
+    if (default_pool.last_block && (default_pool.last_block->free)) {
       length = ROUND_UP(sizeof(T)*(mapping_roundup(nwords) - default_pool.last_block->size), PAGE_SIZE);
     } else {
       length = ROUND_UP(sizeof(struct block_header) + sizeof(T)*mapping_roundup(nwords), PAGE_SIZE);
     }
 
     default_pool.pages += length/PAGE_SIZE;
-    assert(MAP_FAILED !=
-           mmap((void *)alloc_base,
-                length,
-                PROT_READ|PROT_WRITE,
-                MAP_ANONYMOUS|MAP_PRIVATE|MAP_FIXED,
-                -1, 0));
-
+    alloc_page((void *)alloc_base, length);
     struct block_header *header = (struct block_header *)alloc_base;
 
     if (default_pool.last_block)
@@ -289,6 +296,7 @@ void *term_alloc(size_t size) {
     insert_block(remain_block);
   }
 
+  free_block->header.marked = 0;
   free_block->header.tag = 0;
   return (void *)(&(free_block->header)+1);
 }

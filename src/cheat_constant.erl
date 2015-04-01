@@ -3,82 +3,52 @@
 -export([transform/2]).
 
 
-number_nf(_, [], _, ConstMap) ->
-    ConstMap;
-number_nf(Count, [{F, {nif, Name, _, _}}|T], NIFMap, ConstMap) ->
-    case dict:find(Name, NIFMap) of
-        {ok, N} ->
-            Count1 = Count,
-            NIFMap1 = NIFMap;
-        error ->
-            Count1 = Count + 1,
-            NIFMap1 = dict:store(Name, Count, NIFMap),
-            N = Count
-    end,
+transform(Functions, #{module := Module}) ->
+    NIFS = [Fun || {nif, Fun} <- Functions ],
+    FUNS = [Fun || {fundef, Fun} <- Functions ],
 
-    number_nf(Count1, T, NIFMap1,
-              dict:store({funref, F}, {nf, N}, ConstMap)).
+    ConstMap1 = number_const(0, [{funref, Name} || #{name := Name} <- NIFS], nf, dict:new()),
+    ConstMap2 = number_const(0, [{funref, Name} || #{name := Name} <- FUNS], fn, ConstMap1),
 
+    NIFLits = lists:append([Consts || #{consts := Consts} <- NIFS]),
+    FUNLits = lists:append([Consts || #{consts := Consts} <- FUNS]),
+    Lits = NIFLits ++ FUNLits,
 
-number_fn(_, [], ConstMap) ->
-    ConstMap;
-number_fn(N, [{F, {fundef, _, _, _, _, _, _}}|T], ConstMap) ->
-    number_fn(N+1, T,
-              dict:store({funref, F}, {fn, N}, ConstMap)).
+    NIFAtoms = lists:usort([true,false] ++ [ X || {atom, X} <- NIFLits ]),
+    Atoms = lists:usort([X || {atom,_}=X <- FUNLits ] ++ [{atom,X} || X <- NIFAtoms]),
+    ConstMap3 = number_const(1, Atoms, a, ConstMap2),
+    AtomList = [X || {_, X} <- Atoms],
+    NIFAtomList = 
+        [{A, N}
+         || {A, {a, N}} <-
+                [{X, dict:fetch({atom, X}, ConstMap3)}
+                 || X <- NIFAtoms]],
+    LitList =
+        lists:usort(
+          [ L
+            || L <- Lits,
+               case L of
+                   nil -> false;
+                   {atom, _} -> false;
+                   {integer, _} -> false;
+                   {funref, _} -> false;
+                   _ -> true
+               end]),
+    ConstMap4 = number_literal(0, LitList, ConstMap3),
+    FUNS1 = [ transform_fun(Fun, ConstMap4) || Fun <- FUNS],
+    {fn, Entry} = dict:fetch({funref, {Module, main, 0}}, ConstMap4),
+    {Entry, NIFAtomList, AtomList, NIFS, FUNS1, LitList}.
 
-number_atom(_, [], ConstMap) ->
-    ConstMap;
-number_atom(N, [H|T], ConstMap) ->
-    number_atom(N+1, T,
-                dict:store({atom, H}, {a, N}, ConstMap)).
 
 number_literal(_, [], ConstMap) ->
     ConstMap;
-number_literal(N, [nil|T], ConstMap) ->
-    number_literal(N, T, ConstMap);
-number_literal(N, [{atom, _}|T], ConstMap) ->
-    number_literal(N, T, ConstMap);
-number_literal(N, [{integer, _}|T], ConstMap) ->
-    number_literal(N, T, ConstMap);
-number_literal(N, [{funref, _}|T], ConstMap) ->
-    number_literal(N, T, ConstMap);
 number_literal(N, [H|T], ConstMap) ->
     number_literal(N+1, T, dict:store(H, {l, N}, ConstMap)).
 
-
-transform(MainModule, Functions) ->
-    NIFDefs = [ Fun || {_, {nif, _, _, _}} = Fun <- Functions],
-    FUNDefs = [ Fun || {_, {fundef, _, _, _, _, _, _}} = Fun <- Functions ],
-
-    ConstMap =
-        number_fn(0, FUNDefs, number_nf(0, NIFDefs, dict:new(), dict:new())),
-
-    NIFLits = lists:append([ Local || {_, {nif, _, _, Local}} <- Functions ]),
-    NIFAtoms = lists:usort([true, false] ++ [X || {atom, X} <- NIFLits ]),
-    FUNLits = lists:append([ Local || {_, {fundef, _, _, _, _, Local, _}} <- Functions ]),
-    Lits = NIFLits ++ FUNLits,
-
-    LitList = [ L
-                || L <- Lits,
-                   case L of
-                       nil -> false;
-                       {atom, _} -> false;
-                       {integer, _} -> false;
-                       {funref, _} -> false;
-                       _ -> true
-                   end],
-
-
-    AtomList = lists:usort(NIFAtoms ++ [X || {atom, X} <- FUNLits ]),
-    ConstMap1 = number_atom(1, AtomList, ConstMap),
-    ConstMap2 = number_literal(0, LitList, ConstMap1),
-
-    NFList = [ Fun || {_, {nif, _, _, _} = Fun} <- Functions],
-    FNList = [ transform_fun(Fun, ConstMap2) || {_, {fundef, _, _, _, _, _, _} = Fun} <- Functions ],
-    NIFAtomList = [{A, dict:fetch({atom, A}, ConstMap2)} || A <- NIFAtoms ],
-    {fn, Entry} = dict:fetch({funref, {MainModule, main, 0}}, ConstMap2),
-
-    {Entry, NIFAtomList, AtomList, NFList, FNList, LitList}.
+number_const(_, [], _, ConstMap) ->
+    ConstMap;
+number_const(N, [H|T], Type, ConstMap) ->
+    number_const(N+1, T, Type, dict:store(H, {Type, N}, ConstMap)).
 
 
 get_const({c, N}, Consts) ->
@@ -96,15 +66,14 @@ map_const({integer, _}=N, _) ->
 map_const(C, ConstMap) ->
     dict:fetch(C, ConstMap).
 
-transform_fun({fundef, F, NArg, NNonLocal, NVar, Consts, Insts}, ConstMap) ->
+transform_fun(Fun = #{consts := Consts, insts := Insts}, ConstMap) ->
     Consts1 =
         dict:from_list(
           lists:zip(lists:seq(0, length(Consts)-1),
                     [map_const(Const, ConstMap) || Const <- Consts ])),
 
     Insts1 = [ transform_inst(Inst, Consts1) || Inst <- Insts ],
-    {fundef, F, NArg, NNonLocal, NVar, Insts1}.
-
+    Fun#{insts := Insts1}.
 
 transform_inst({call, Fun, Args, Result}, Consts) ->
     {call,
@@ -116,6 +85,8 @@ transform_inst({move, Source, Target}, Consts) ->
      get_const(Source, Consts),
      get_const(Target, Consts)};
 transform_inst({label, _}=Inst, _Consts) ->
+    Inst;
+transform_inst({line, _}=Inst, _Consts) ->
     Inst;
 transform_inst({jump, _}=Inst, _Consts) ->
     Inst;

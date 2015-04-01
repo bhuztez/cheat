@@ -3,28 +3,50 @@
 -export([get_function/1]).
 
 
-get_function({io, print, 1}) ->
-    {nif, io_print, "io_print.c", []};
-get_function({std, plus, 2}) ->
-    {nif, std_plus, "std_plus.c", []};
+get_function({io, print, 1}=Name) ->
+    get_function(Name, []);
 
-get_function({std, head, 1}) ->
-    {nif, std_head, "std_head.c", []};
-get_function({std, tail, 1}) ->
-    {nif, std_tail, "std_tail.c", []};
-get_function({std, is_cons, 1}) ->
-    {nif, std_is_cons, "std_is_cons.c", []};
-get_function({std, cons, 2}) ->
-    {nif, std_cons, "std_cons.c", []};
+get_function({std, cons, 2}=Name) ->
+    get_function(Name, []);
+get_function({std, element, 2}=Name) ->
+    get_function(Name, []);
+get_function({std, gc, 0}=Name) ->
+    get_function(Name, []);
+get_function({std, head, 1}=Name) ->
+    get_function(Name, []);
+get_function({std, heap_info, 1}=Name) ->
+    get_function(Name, [{atom, used}, {atom, free}, {atom, size}]);
+get_function({std, match, 2}=Name) ->
+    get_function(Name, []);
+get_function({std, is_cons, 1}=Name) ->
+    get_function(Name, []);
+get_function({std, is_tuple, 2}=Name) ->
+    get_function(Name, []);
+get_function({std, plus, 2}=Name) ->
+    get_function(Name, []);
+get_function({std, tail, 1}=Name) ->
+    get_function(Name, []);
 
-get_function({std, element, 2}) ->
-    {nif, std_element, "std_element.c", []};
-get_function({std, is_tuple, 2}) ->
-    {nif, std_is_tuple, "std_is_tuple.c", []};
-get_function({std, make_tuple, N}) when N >= 1 ->
-    {nif, std_make_tuple, "std_make_tuple.c", []};
+get_function({std, make_tuple, N}=Name) ->
+    FunName = "std_make_tuple_"++integer_to_list(N),
+    Args1 = [io_lib:format("T a~w", [I]) || I <- lists:seq(1, N)],
+    Args2 = [io_lib:format("a~w", [I]) || I <- lists:seq(1, N)],
+    Code = [io_lib:format("T ~s(~s) {~n", [FunName, string:join(Args1, ",")]),
+            io_lib:format("  return std_make_tuple(~s);~n", [string:join([integer_to_list(N)|Args2], ",")]),
+            "}\n"
+           ],
+    {nif,
+     #{name     => Name,
+       cname    => FunName,
+       filename => "std_make_tuple.c",
+       consts   => [],
+       code     => Code}}.
 
-get_function({std, match, 2}) ->
-    {nif, std_match, "std_match.c", []};
-get_function({std, make_fun, N}) when N >= 1 ->
-    {nif, std_make_fun, "std_make_fun.c", []}.
+
+get_function({M,F,A}=Name, Consts) ->
+    FullName = io_lib:format("~s_~s_~w", [M,F,A]),
+    {nif,
+     #{name     => Name,
+       cname    => FullName,
+       filename => [FullName, ".c"],
+       consts   => Consts}}.

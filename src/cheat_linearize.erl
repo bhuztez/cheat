@@ -1,13 +1,13 @@
 -module(cheat_linearize).
 
--export([transform/1]).
+-export([transform/2]).
 
 
-transform(Forms) ->
+transform(Forms, _) ->
     [transform_form(Form) || Form <- Forms].
 
 
-transform_form({fundef, F, A, NonLocal, Local, Expression}) ->
+transform_form({fundef, Line, {M, F, A}, NonLocal, Local, Expr}) ->
     NNL = length(NonLocal),
     Local1 =
         sets:to_list(
@@ -22,170 +22,194 @@ transform_form({fundef, F, A, NonLocal, Local, Expression}) ->
           ++ [{{arg, N}, NNL+N} || N <- lists:seq(0, A-1)]
           ++ lists:zip(Local1, lists:seq(NNL+A, NNL+A+NL-1))),
 
-    {{VarNum, Insts}, {_, _NVar, VarNameMap}} = transform_expression(Expression, {0, NNL+A+NL, VarNameMap}),
+    {{VarNum, Insts}, {_, _NVar, VarNameMap}} =
+        transform_expr(Expr, {0, NNL+A+NL, VarNameMap}),
     Insts1 = Insts ++ [{return, VarNum}],
-    {fundef, F, A, NNL, Insts1}.
+    {fundef, Line, {M, F, A}, NNL, Insts1}.
 
 
-transform_expression({arg, _}=Arg, {_, _, VarNameMap}=State) ->
+transform_expr({arg, _}=Arg, {_, _, VarNameMap}=State) ->
     {{dict:fetch(Arg, VarNameMap), []}, State};
-transform_expression({varname, _, VarName}, {_, _, VarNameMap}=State) ->
-    {{dict:fetch(VarName, VarNameMap), []}, State};
-transform_expression({literal, Literal}, {NLabel, NVar, VarNameMap}) ->
-    {{NVar, [{literal, Literal, NVar}]}, {NLabel, NVar+1, VarNameMap}};
+transform_expr({varname, Line, VarName}, {_, _, VarNameMap}=State) ->
+    {{dict:fetch(VarName, VarNameMap), [{line, Line}]}, State};
+transform_expr({literal, Line, nil},
+               {NLabel, NVar, VarNameMap}) ->
+    {{NVar, [{line, Line}, {literal, nil, NVar}]},
+     {NLabel, NVar+1, VarNameMap}};
+transform_expr({literal, Line, {Type, _, Literal}},
+               {NLabel, NVar, VarNameMap}) ->
+    {{NVar, [{line, Line}, {literal, {Type, Literal}, NVar}]},
+     {NLabel, NVar+1, VarNameMap}};
+transform_expr({make_fun, Line, {{atom,_,M},{atom,_,F},{integer,_,A}}},
+               {NLabel, NVar, VarNameMap}) ->
+    {{NVar, [{line, Line}, {literal, {funref,{M,F,A}}, NVar}]},
+     {NLabel, NVar+1, VarNameMap}};
 
-transform_expression({make_fun, {atom, _, M}, {atom, _, F}, {integer, _, A}}, {NLabel, NVar, VarNameMap}) ->
-    {{NVar, [{literal, {funref, none, {M, F, A}}, NVar}]}, {NLabel, NVar+1, VarNameMap}};
+transform_expr({make_fun, Line, {M,F,A,[]}},
+               {NLabel, NVar, VarNameMap}) ->
+    {{NVar, [{line, Line}, {literal, {funref,{M,F,A}}, NVar}]},
+     {NLabel, NVar+1, VarNameMap}};
 
-transform_expression({make_fun, N, []}, {NLabel, NVar, VarNameMap}) ->
-    {{NVar, [{literal, {funref, none, N}, NVar}]}, {NLabel, NVar+1, VarNameMap}};
-
-transform_expression({make_fun, N, VarNames}, {NLabel, NVar, VarNameMap}) ->
+transform_expr({make_fun, Line, {M,F,A,VarNames}}, {NLabel, NVar, VarNameMap}) ->
     VarNums = [ dict:fetch(VarName, VarNameMap) || VarName <- VarNames ],
     {{NVar+2,
-      [{literal, {funref, none, {std, make_fun, length(VarNums)+1}}, NVar},
-       {literal, {funref, none, N}, NVar+1},
+      [{line, Line},
+       {literal, {funref, {std, make_fun, length(VarNums)+1}}, NVar},
+       {literal, {funref, {M,F,A}}, NVar+1},
        {call, NVar, [NVar+1|VarNums], NVar+2}]},
      {NLabel, NVar+3, VarNameMap}};
 
-transform_expression({call, {varname, _, F}, Expressions}, State) ->
-    {VarNums, Insts, {NLabel, NVar, VarNameMap}} = transform_expressions(Expressions, State),
-    FNum = dict:fetch(F, VarNameMap),
-    Insts1 = [[{call, FNum, VarNums, NVar}]],
-    Insts2 = lists:append(Insts ++ Insts1),
-    {{NVar, Insts2}, {NLabel, NVar+1, VarNameMap}};
-
-transform_expression({call, {atom,_,M}, {atom, _, F}, Expressions}, State) ->
-    {VarNums, Insts, {NLabel, NVar, VarNameMap}} = transform_expressions(Expressions, State),
+transform_expr({call, Line, {Fun, Exprs}}, State) ->
+    {[FunNum|VarNums], Insts, {NLabel, NVar, VarNameMap}} =
+        transform_exprs([Fun|Exprs], State),
     Insts1 =
-        [[ {literal, {funref, none, {M, F, length(VarNums)}}, NVar},
-           {call, NVar, VarNums, NVar+1} ]],
-    Insts2 = lists:append(Insts ++ Insts1),
-    {{NVar+1, Insts2}, {NLabel, NVar+2, VarNameMap}};
+        [{line, Line},
+         {call, FunNum, VarNums, NVar}],
+    {{NVar, Insts ++ Insts1},
+     {NLabel, NVar+1, VarNameMap}};
 
-transform_expression({'case', Expressions, Clauses}, State) ->
-    {VarNums, Insts, {NLabel, NVar, VarNameMap}} = transform_expressions(Expressions, State),
+transform_expr({'case', Line, {Exprs, Clauses}}, State) ->
+    {VarNums, Insts, {NLabel, NVar, VarNameMap}} = transform_exprs(Exprs, State),
     {Insts1, {OutLabel, OutVar, VarNums, NLabel1, NVar1, VarNameMap}} =
-        lists:mapfoldl(fun transform_clause/2, {NLabel, NVar, VarNums, NLabel+1, NVar+1, VarNameMap}, Clauses),
+        lists:mapfoldl(
+          fun transform_clause/2,
+          {NLabel, NVar, VarNums, NLabel+1, NVar+1, VarNameMap},
+          Clauses),
 
-    Insts2 =
-        lists:append(
-          Insts ++ Insts1
-          ++ [[ badmatch, {label, OutLabel} ]]),
-
+    Insts2 = Insts ++ lists:append(Insts1) ++ [{line, Line}, badmatch, {label, OutLabel}],
     {{OutVar, Insts2}, {NLabel1, NVar1, VarNameMap}}.
 
-transform_expressions(Expressions, State) ->
-    {VarNumsAndInsts, State1} = lists:mapfoldl(fun transform_expression/2, State, Expressions),
+transform_exprs(Exprs, State) ->
+    {VarNumsAndInsts, State1} = lists:mapfoldl(fun transform_expr/2, State, Exprs),
     {VarNums, Insts} = lists:unzip(VarNumsAndInsts),
-    {VarNums, Insts, State1}.
+    {VarNums, lists:append(Insts), State1}.
+
+
+
+transform_clause({MSs, [], []}, {OutLabel, OutVar, [VarNum], NLabel, NVar, VarNameMap}) ->
+    {Insts, {EndLabel, NLabel1, NVar1, VarNameMap}} =
+        lists:mapfoldl(
+          fun transform_mss/2,
+          {NLabel, NLabel+1, NVar, VarNameMap},
+          lists:zip([VarNum], MSs)),
+    Insts1 = [ {move, VarNum, OutVar}, {jump, OutLabel}, {label, EndLabel}],
+    Insts2 = lists:append(Insts) ++ Insts1,
+    {Insts2, {OutLabel, OutVar, [VarNum], NLabel1, NVar1, VarNameMap}};
+
+
+transform_clause({MSs, Guards, Exprs}, {OutLabel, OutVar, VarNums, NLabel, NVar, VarNameMap}) ->
+    {Insts, {EndLabel, NLabel1, NVar1, VarNameMap}} =
+        lists:mapfoldl(fun transform_mss/2, {NLabel, NLabel+1, NVar, VarNameMap}, lists:zip(VarNums, MSs)),
+
+    {Insts1, {EndLabel, NLabel2, NVar2, VarNameMap}} =
+        lists:mapfoldl(fun transform_guard/2, {EndLabel, NLabel1, NVar1, VarNameMap}, Guards),
+
+    {Vars, Insts2, {NLabel3, NVar3, VarNameMap}} = transform_exprs(Exprs, {NLabel2, NVar2, VarNameMap}),
+    LastVar = lists:last(Vars),
+    Insts3 =
+        lists:append(Insts ++ Insts1) ++ Insts2
+        ++ [ {move, LastVar, OutVar}, {jump, OutLabel}, {label, EndLabel} ],
+    {Insts3, {OutLabel, OutVar, VarNums, NLabel3, NVar3, VarNameMap}}.
+
 
 
 transform_guard(Guard, {EndLabel, NLabel, NVar, VarNameMap}) ->
     {{VarNum, Insts}, {NLabel1, NVar1, VarNameMap}} =
-        transform_expression(Guard, {NLabel, NVar, VarNameMap}),
+        transform_expr(Guard, {NLabel, NVar, VarNameMap}),
     Insts1 = Insts ++ [{branch, VarNum, EndLabel}],
     {Insts1, {EndLabel, NLabel1, NVar1, VarNameMap}}.
 
 
-transform_matchspec({assign, VarName}, {VarNum, _, _, _, VarNameMap}=State) ->
+transform_ms({assign, Line, VarName}, {VarNum, _, _, _, VarNameMap}=State) ->
     VarNum1 = dict:fetch(VarName, VarNameMap),
-    {[{move, VarNum, VarNum1}], State};
-transform_matchspec({match_var, VarName}, {VarNum, EndLabel, NLabel, NVar, VarNameMap}) ->
+    {[{line, Line}, {move, VarNum, VarNum1}], State};
+transform_ms({match_var, Line, VarName}, {VarNum, EndLabel, NLabel, NVar, VarNameMap}) ->
     VarNum1 = dict:fetch(VarName, VarNameMap),
     Insts =
-        [ {literal, {funref, none, {std, match, 2}}, NVar},
+        [ {line, Line},
+          {literal, {funref, {std, match, 2}}, NVar},
           {call, NVar, [VarNum, VarNum1], NVar+1},
           {branch, NVar+1, EndLabel} ],
     {Insts, {VarNum, EndLabel, NLabel, NVar+2, VarNameMap}};
-transform_matchspec({match_literal, Literal}, {VarNum, EndLabel, NLabel, NVar, VarNameMap}) ->
+transform_ms({match_literal, Line, nil}, {VarNum, EndLabel, NLabel, NVar, VarNameMap}) ->
     Insts =
-        [{literal, Literal, NVar},
-         {literal, {funref, none, {std, match, 2}}, NVar+1},
+        [{line, Line},
+         {literal, nil, NVar},
+         {literal, {funref, {std, match, 2}}, NVar+1},
          {call, NVar+1, [VarNum, NVar], NVar+2},
          {branch, NVar+2, EndLabel}],
-    {Insts, {VarNum, EndLabel, NLabel, NVar+2, VarNameMap}};
-transform_matchspec({match_tuple, MatchSpecs}, {VarNum, EndLabel, NLabel, NVar, VarNameMap}) ->
-    NM = length(MatchSpecs),
+    {Insts, {VarNum, EndLabel, NLabel, NVar+3, VarNameMap}};
+transform_ms({match_literal, Line, {Type, _, Literal}}, {VarNum, EndLabel, NLabel, NVar, VarNameMap}) ->
     Insts =
-        [[{literal, {funref, none, {std, is_tuple, 2}}, NVar},
-          {literal, {integer, none, NM}, NVar+1},
-          {call, NVar, [VarNum, NVar+1], NVar+2},
-          {branch, NVar+2, EndLabel}]],
+        [{line, Line},
+         {literal, {Type, Literal}, NVar},
+         {literal, {funref, {std, match, 2}}, NVar+1},
+         {call, NVar+1, [VarNum, NVar], NVar+2},
+         {branch, NVar+2, EndLabel}],
+    {Insts, {VarNum, EndLabel, NLabel, NVar+3, VarNameMap}};
+transform_ms({match_tuple, Line, MSs}, {VarNum, EndLabel, NLabel, NVar, VarNameMap}) ->
+    NM = length(MSs),
+    Insts =
+        [{line, Line},
+         {literal, {funref, {std, is_tuple, 2}}, NVar},
+         {literal, {integer, NM}, NVar+1},
+         {call, NVar, [VarNum, NVar+1], NVar+2},
+         {branch, NVar+2, EndLabel}],
 
     {Insts1, {VarNum, EndLabel, NLabel1, NVar1, VarNameMap}} =
         lists:mapfoldl(
           fun transform_match_tuple_element/2,
           {VarNum, EndLabel, NLabel, NVar+3, VarNameMap},
-          lists:zip(lists:seq(1, NM), MatchSpecs)),
+          lists:zip(lists:seq(1, NM), MSs)),
 
-    Insts2 = lists:append(Insts ++ Insts1),
+    Insts2 = Insts ++ lists:append(Insts1),
     {Insts2, {VarNum, EndLabel, NLabel1, NVar1, VarNameMap}};
-transform_matchspec({match_list, [], B}, {VarNum, EndLabel, NLabel, NVar, VarNameMap}) ->
+
+transform_ms({match_list, _, {[], B}}, {VarNum, EndLabel, NLabel, NVar, VarNameMap}) ->
     {Insts, {EndLabel, NLabel1, NVar1, VarNameMap}} =
-        transform_matchspecs({VarNum,B}, {EndLabel, NLabel, NVar, VarNameMap}),
+        transform_mss({VarNum,B}, {EndLabel, NLabel, NVar, VarNameMap}),
     {Insts, {VarNum, EndLabel, NLabel1, NVar1, VarNameMap}};
-transform_matchspec({match_list, [H|T], B}, {VarNum, EndLabel, NLabel, NVar, VarNameMap}) ->
+transform_ms({match_list, Line, {[H|T], B}}, {VarNum, EndLabel, NLabel, NVar, VarNameMap}) ->
     Insts =
-        [ {literal, {funref, none, {std, is_cons, 1}}, NVar},
-          {literal, {funref, none, {std, head, 1}}, NVar+1},
-          {literal, {funref, none, {std, tail, 1}}, NVar+2},
+        [ {line, Line},
+          {literal, {funref, {std, is_cons, 1}}, NVar},
+          {literal, {funref, {std, head, 1}}, NVar+1},
+          {literal, {funref, {std, tail, 1}}, NVar+2},
           {call, NVar, [VarNum], NVar+3},
           {branch, NVar+3, EndLabel},
           {call, NVar+1, [VarNum], NVar+4},
           {call, NVar+2, [VarNum], NVar+5} ],
 
     {Insts1, {EndLabel, NLabel1, NVar1, VarNameMap}} =
-        transform_matchspecs({NVar+4,H}, {EndLabel, NLabel, NVar+6, VarNameMap}),
+        transform_mss({NVar+4,H}, {EndLabel, NLabel, NVar+6, VarNameMap}),
 
     {Insts2, {_, EndLabel, NLabel2, NVar2, VarNameMap}} =
-        transform_matchspec({match_list, T, B}, {NVar+5, EndLabel, NLabel1, NVar1, VarNameMap}),
+        transform_ms({match_list, Line, {T, B}}, {NVar+5, EndLabel, NLabel1, NVar1, VarNameMap}),
 
     Insts3 = Insts ++ Insts1 ++ Insts2,
 
     {Insts3, {VarNum, EndLabel, NLabel2, NVar2, VarNameMap}};
-transform_matchspec({match_ignore, _}, State) ->
+transform_ms({match_ignore, _, _}, State) ->
     {[], State}.
 
 
-transform_match_tuple_element({N,MatchSpec}, {VarNum, EndLabel, NLabel, NVar, VarNameMap}) ->
+transform_match_tuple_element({N,MS}, {VarNum, EndLabel, NLabel, NVar, VarNameMap}) ->
     Insts =
-        [{literal, {funref, none, {std, element, 2}}, NVar},
-         {literal, {integer, none, N}, NVar+1},
+        [{literal, {funref, {std, element, 2}}, NVar},
+         {literal, {integer, N}, NVar+1},
          {call, NVar, [NVar+1, VarNum], NVar+2}],
 
     {Insts1, {EndLabel, NLabel1, NVar1, VarNameMap}} =
-        transform_matchspecs({NVar+2, MatchSpec}, {EndLabel, NLabel, NVar+3, VarNameMap}),
+        transform_mss({NVar+2, MS}, {EndLabel, NLabel, NVar+3, VarNameMap}),
 
     Insts2 = Insts ++ Insts1,
     {Insts2, {VarNum, EndLabel, NLabel1, NVar1, VarNameMap}}.
 
 
-transform_matchspecs({VarNum, MatchSpecs}, {EndLabel, NLabel, NVar, VarNameMap}) ->
+transform_mss({VarNum, MSs}, {EndLabel, NLabel, NVar, VarNameMap}) ->
     {Insts, {VarNum, EndLabel, NLabel1, NVar1, VarNameMap}} =
-        lists:mapfoldl(fun transform_matchspec/2, {VarNum, EndLabel, NLabel, NVar, VarNameMap}, MatchSpecs),
+        lists:mapfoldl(
+          fun transform_ms/2,
+          {VarNum, EndLabel, NLabel, NVar, VarNameMap},
+          MSs),
     {lists:append(Insts), {EndLabel, NLabel1, NVar1, VarNameMap}}.
-
-
-transform_clause({MatchSpecs, [], []}, {OutLabel, OutVar, [VarNum], NLabel, NVar, VarNameMap}) ->
-    {Insts, {EndLabel, NLabel1, NVar1, VarNameMap}} =
-        lists:mapfoldl(fun transform_matchspecs/2, {NLabel, NLabel+1, NVar, VarNameMap}, lists:zip([VarNum], MatchSpecs)),
-    Insts1 = [[ {move, VarNum, OutVar}, {jump, OutLabel}, {label, EndLabel}]],
-    Insts2 = lists:append(Insts ++ Insts1),
-    {Insts2, {OutLabel, OutVar, [VarNum], NLabel1, NVar1, VarNameMap}};
-
-
-transform_clause({MatchSpecs, Guards, Expressions}, {OutLabel, OutVar, VarNums, NLabel, NVar, VarNameMap}) ->
-    {Insts, {EndLabel, NLabel1, NVar1, VarNameMap}} =
-        lists:mapfoldl(fun transform_matchspecs/2, {NLabel, NLabel+1, NVar, VarNameMap}, lists:zip(VarNums, MatchSpecs)),
-
-    {Insts1, {EndLabel, NLabel2, NVar2, VarNameMap}} =
-        lists:mapfoldl(fun transform_guard/2, {EndLabel, NLabel1, NVar1, VarNameMap}, Guards),
-
-    {Vars, Insts2, {NLabel3, NVar3, VarNameMap}} = transform_expressions(Expressions, {NLabel2, NVar2, VarNameMap}),
-    LastVar = lists:last(Vars),
-    Insts3 =
-        lists:append(
-          Insts ++ Insts1 ++ Insts2
-          ++ [[ {move, LastVar, OutVar}, {jump, OutLabel}, {label, EndLabel} ]]),
-    {Insts3, {OutLabel, OutVar, VarNums, NLabel3, NVar3, VarNameMap}}.

@@ -1,8 +1,4 @@
-T std_make_tuple(T x,...){
-  if (TAG(x) != TAG_INT)
-    BADMATCH;
-  T n = VALUE(x);
-
+T std_make_tuple(T n,...){
   struct tuple *tuple = (struct tuple *)term_alloc(sizeof(struct tuple) + sizeof(T) * n);
   term_set_tag(tuple, TAG_TUPLE);
   tuple->n = n;
