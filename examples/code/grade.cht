@@ -1,0 +1,4 @@
+main() ->
+    A = io:read_int(),
+    B = io:read_int(),
+    io:print_int(A+B).

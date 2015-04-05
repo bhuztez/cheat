@@ -4,5 +4,6 @@ logs/
 *~
 *.beam
 *.dump
+*.elf
 src/cheat_lexer.erl
 src/cheat_parser.erl

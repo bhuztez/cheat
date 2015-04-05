@@ -1,8 +1,0 @@
-sum([])-> 0;
-sum([H|T]) -> H+sum(T).
-
-s({X,Y,Z}) -> X+Y+Z.
-
-main() ->
-     io:print(sum([1,2,3,4,5])),
-     io:print(s({1,2,3})).

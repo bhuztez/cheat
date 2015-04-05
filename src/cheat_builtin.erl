@@ -3,7 +3,9 @@
 -export([get_function/1]).
 
 
-get_function({io, print, 1}=Name) ->
+get_function({io, read_int, 0}=Name) ->
+    get_function(Name, []);
+get_function({io, print_int, 1}=Name) ->
     get_function(Name, []);
 
 get_function({std, cons, 2}=Name) ->

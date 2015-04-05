@@ -1,7 +1,3 @@
 cheat programming language
 
 $ rebar compile
-$ make
-$ ./bin/sum
-15
-6

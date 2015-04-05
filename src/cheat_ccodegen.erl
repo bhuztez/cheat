@@ -34,13 +34,14 @@ format_funname({M,F,A}) ->
     io_lib:format("~s:~s/~w", [M,F,A]).
 
 read_file(Paths, FileName) ->
-    {ok, Bin} = path_read_file(Paths, FileName),
-    [io_lib:format("#line 1 \"~s\"~n", [FileName]), Bin].
+    {ok, FullName, Bin} = path_read_file(Paths, FileName),
+    [io_lib:format("#line 1 \"~s\"~n", [FullName]), Bin].
 
 path_read_file([Path|Paths], FileName) ->
-    case file:read_file(filename:join(Path, FileName)) of
+    FullName = filename:join(Path, FileName),
+    case file:read_file(FullName) of
         {ok, Binary} ->
-            {ok, Binary};
+            {ok, FullName, Binary};
         _ ->
             path_read_file(Paths, FileName)
     end.
