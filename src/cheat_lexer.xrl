@@ -4,9 +4,9 @@ Atom       = [a-z][0-9a-zA-Z_]*
 Variable   = [A-Z][0-9a-zA-Z_]*
 Ignore     = _[0-9a-zA-Z_]*
 Integer    = [0-9]+
-Keyword    = ([={}\[\]|(),;:\.+\-*/%<>]|<-|\|\||->|\*\*|==|/=|=<|>=|=:=|=/=|and|or|not|case|of|end|when|fun)
+Keyword    = ([={}\[\]|(),;:\.+\-*/%<>]|<-|\|\||->|\*\*|==|/=|=<|>=|=:=|=/=|<<|>>|after|and|andalso|band|begin|bnot|bor|bsl|bsr|bxor|case|catch|cond|div|end|fun|if|let|not|of|or|orelse|receive|rem|try|when|xor)
 Whitespace = [\000-\s]+
-Comment    = --[^\n]+
+Comment    = %[^\n]+
 String     = "([^"]|\\")+"
 
 Rules.

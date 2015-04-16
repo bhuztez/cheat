@@ -5,9 +5,17 @@
 
 get_function({io, read_int, 0}=Name) ->
     get_function(Name, []);
+get_function({io, read_string, 1}=Name) ->
+    get_function(Name, []);
 get_function({io, print_int, 1}=Name) ->
     get_function(Name, []);
+get_function({io, print_string, 1}=Name) ->
+    get_function(Name, []);
 
+get_function({std, binary_at, 2}=Name) ->
+    get_function(Name, []);
+get_function({std, binary_pos, 3}=Name) ->
+    get_function(Name, [{atom, infinity}]);
 get_function({std, cons, 2}=Name) ->
     get_function(Name, []);
 get_function({std, element, 2}=Name) ->
@@ -20,11 +28,21 @@ get_function({std, heap_info, 1}=Name) ->
     get_function(Name, [{atom, used}, {atom, free}, {atom, size}]);
 get_function({std, match, 2}=Name) ->
     get_function(Name, []);
+get_function({std, is_binary, 2}=Name) ->
+    get_function(Name, []);
+get_function({std, is_binary_gt, 2}=Name) ->
+    get_function(Name, []);
 get_function({std, is_cons, 1}=Name) ->
     get_function(Name, []);
 get_function({std, is_tuple, 2}=Name) ->
     get_function(Name, []);
+get_function({std, mul, 2}=Name) ->
+    get_function(Name, []);
 get_function({std, plus, 2}=Name) ->
+    get_function(Name, []);
+get_function({std, minus, 2}=Name) ->
+    get_function(Name, []);
+get_function({std, 'rem', 2}=Name) ->
     get_function(Name, []);
 get_function({std, tail, 1}=Name) ->
     get_function(Name, []);

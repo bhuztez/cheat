@@ -1,14 +1,16 @@
 Nonterminals
 forms form clause_list clause clause_body
 expression_list expression lc_expression_list lc_expression
-case_clause_list case_clause uminus.
+case_clause_list case_clause uminus
+binary_fields binary_field bin_value.
 
 Terminals
 varname atom string integer ignore
 case of end when fun
+'<<' '>>'
 '(' ')' '[' ']' '|' '||' '{' '}' ',' ';' '.' ':' '<-' '->' '='
 '**'
-'*' '/' '%'
+'*' '/' div rem
 '+' '-'
 '==' '/=' '<' '=<' '>=' '>' '=:=' '=/='
 and or
@@ -18,7 +20,7 @@ Rootsymbol forms.
 
 Unary    900 uminus not.
 Left     800 '**'.
-Left     700 '*' '/' '%'.
+Left     700 '*' '/' div rem.
 Left     600 '+' '-'.
 Nonassoc 500 '==' '/=' '<' '=<' '>=' '>' '=:=' '=/='.
 Left     400 and.
@@ -85,10 +87,13 @@ expression -> expression '*' expression:
     op2(mul, '$1', '$2', '$3').
 
 expression -> expression '/' expression:
-    op2('div', '$1', '$2', '$3').
+    op2(fdiv, '$1', '$2', '$3').
 
-expression -> expression '%' expression:
-    op2('mod', '$1', '$2', '$3').
+expression -> expression 'div' expression:
+    op2(idiv, '$1', '$2', '$3').
+
+expression -> expression 'rem' expression:
+    op2('rem', '$1', '$2', '$3').
 
 expression -> expression '+' expression:
     op2(plus, '$1', '$2', '$3').
@@ -115,7 +120,7 @@ expression -> expression '>' expression:
     op2(gt, '$1', '$2', '$3').
 
 expression -> expression '=:=' expression:
-    op2(exact, '$1', '$2', '$3').
+    op2(match, '$1', '$2', '$3').
 
 expression -> expression '=/=' expression:
     op2(notexact, '$1', '$2', '$3').
@@ -191,6 +196,42 @@ expression -> string:
 
 expression -> ignore:
     '$1'.
+
+expression -> '<<' '>>':
+    {binary, line_of('$1'), []}.
+
+expression -> '<<' binary_fields '>>':
+    {binary, line_of('$1'), '$2'}.
+
+binary_fields -> binary_fields ',' binary_field:
+    '$1' ++ ['$3'].
+
+binary_fields -> binary_field:
+    ['$1'].
+
+binary_field -> bin_value:
+    {binary_field, line_of('$1'), {'$1', {integer, line_of('$1'), 1}, {atom, line_of('$1'), integer}}}.
+
+binary_field -> bin_value '/' atom:
+    {binary_field, line_of('$1'), {'$1', {integer, line_of('$1'), infinity}, '$3'}}.
+
+binary_field -> bin_value ':' integer '/' atom:
+    {binary_field, line_of('$1'), {'$1', '$3', '$5'}}.
+
+bin_value -> varname:
+    '$1'.
+
+bin_value -> integer:
+    literal('$1').
+
+bin_value -> string:
+    literal('$1').
+
+bin_value -> ignore:
+    '$1'.
+
+bin_value -> '(' expression ')':
+    '$2'.
 
 lc_expression_list -> lc_expression_list ',' lc_expression:
     '$1' ++ ['$3'].

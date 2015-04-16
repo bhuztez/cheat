@@ -69,6 +69,10 @@ transform_ms({'fun', Line, {local,F,A}}, M) ->
     [{match_fun, Line, {M,F,A}}];
 transform_ms({'fun', Line, {M,F,A}}, _) ->
     [{match_fun, Line, {M,F,A}}];
+transform_ms({binary, Line, Fields}, Module) ->
+    [{match_binary, Line,
+      [{binary_field, L, {transform_ms(V, Module), S, T}}
+       || {binary_field, L, {V, {integer, _, S}, {atom, _, T}}} <- Fields]}];
 transform_ms({'case', _, _}, _) ->
     throw("illegal pattern");
 transform_ms({call, _, _}, _) ->
@@ -134,13 +138,22 @@ transform_expr({'fun', Line, Clauses}, Module) ->
         {fundef, _, Fun} ->
             {fundef, Line, Fun}
     end;
+transform_expr({binary, Line, Fields}, Module) ->
+    {binary, Line,
+     [{binary_field, L, {transform_expr(V, Module), S, T}}
+      || {binary_field, L, {V, {integer, _, S}, {atom, _, T}}} <- Fields,
+         case {S,T} of
+             {1, integer} -> true;
+             {_, binary} -> true;
+             _ -> false
+         end]};
 transform_expr({list_comprehension, _, _}, _) ->
     throw("TODO");
 transform_expr({ignore, _, _}, _) ->
     throw("illegal expression").
 
 
-transform_case_clause({MS, Guards, Exprs}, Module) ->
+transform_case_clause({case_clause, _, {MS, Guards, Exprs}}, Module) ->
     {[transform_ms(MS, Module)],
      [transform_expr(Expr, Module) || Expr <- Guards],
      [transform_expr(Expr, Module) || Expr <- Exprs]}.

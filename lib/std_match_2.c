@@ -17,8 +17,20 @@ T std_match_2(T x, T y) {
     for(i=0; i<(PTUPLE(x)->n); i++)
       if (std_match_2(PTUPLE(x)->elements[i], PTUPLE(y)->elements[i]) == a_false)
         return a_false;
-    return a_true;   
+    return a_true;
+  case TAG_SUBBIN:
+    if (PSUBBIN(x)->length != PSUBBIN(y)->length)
+      return a_false;
+    if ((PSUBBIN(x)->bin == PSUBBIN(y)->bin) && (PSUBBIN(x)->offset == PSUBBIN(y)->offset))
+      return a_true;
+
+    char * bx = (PSUBBIN(x)->bin->data) + PSUBBIN(x)->offset;
+    char * by = (PSUBBIN(y)->bin->data) + PSUBBIN(y)->offset;
+
+    if (strncmp(bx, by, PSUBBIN(x)->length) == 0)
+      return a_true;
+    return a_false;
   default:
     return a_false;
-  }  
+  }
 }

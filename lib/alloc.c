@@ -53,6 +53,7 @@ struct memory_pool {
   struct block_header *last_block;
   size_t free_size;
   size_t free_blocks;
+  size_t used_blocks;
 } __attribute__((packed));
 
 
@@ -250,6 +251,7 @@ void gc_sweep() {
     } else {
       header = merge_block(header);
       insert_block((struct free_block *)header);
+      default_pool.used_blocks -= 1;
     }
   }
 }
@@ -298,6 +300,7 @@ void *term_alloc(size_t size) {
 
   free_block->header.marked = 0;
   free_block->header.tag = 0;
+  default_pool.used_blocks += 1;
   return (void *)(&(free_block->header)+1);
 }
 

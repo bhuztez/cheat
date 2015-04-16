@@ -12,7 +12,7 @@ clean:
 
 build/%.elf: code/%.cht
 	@echo "COMPILE $(@:build/%.elf:%)"
-	@../cheatc "$<" | gcc -g -o "$@" -Wall -Wextra -Wno-unused-label -Wno-varargs -x c -
+	@../cheatc "$<" | gcc -g -o "$@" -Wall -Wextra -Werror -Wno-unused-label -Wno-varargs -x c -
 
 %: build/%.elf
 	@echo "CHECK $@"

@@ -1,0 +1,19 @@
+ride(<<>>, Acc) ->
+    Acc;
+ride(<<A, Rest/binary>>, Acc) ->
+    ride(Rest, (Acc * (A - 64)) rem 47).
+
+
+main() ->
+    A = io:read_string(6),
+    B = io:read_string(6),
+
+    Result =
+        case ride(A,1) =:= ride(B,1) of
+            true ->
+                "GO";
+            false ->
+                "STAY"
+        end,
+
+    io:print_string(Result).

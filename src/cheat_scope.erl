@@ -39,6 +39,16 @@ transform_expr({varname,_,VarName}=Expr, {Scopes,NFun,Funs,Module}) ->
         {ok, Scopes1} ->
             {Expr, {Scopes1, NFun, Funs, Module}}
     end;
+transform_expr({binary, Line, Fields}, State) ->
+    {Exprs, State1} =
+        lists:mapfoldl(
+          fun transform_expr/2,
+          State,
+          [Expr || {binary_field, _, {Expr, _, _}} <- Fields]),
+    Fields1 =
+        [ {binary_field, L, {Expr,S,T}}
+          || {Expr, {binary_field, L, {_,S,T}}} <-lists:zip(Exprs, Fields)],
+    [{binary, Line, Fields1}, State1];
 transform_expr({call, Line, {F, A}}, State) ->
     {[F1|A1], State1} =
         lists:mapfoldl(fun transform_expr/2, State, [F|A]),
@@ -49,7 +59,6 @@ transform_expr({fundef, Line, {ignore,A,Expr}}, {_,_,_,Module}=State) ->
     {{make_fun, Line, {Module, NFun, A, NonLocal}},
      {Scopes, NFun+1,
       [{fundef, Line, {Module, NFun, A}, NonLocal, Local, Expr1}|Funs], Module}};
-
 transform_expr({'case', Line, {Exprs, Clauses}}, State) ->
     {Exprs1, State1} =
         lists:mapfoldl(fun transform_expr/2, State, Exprs),
@@ -79,6 +88,16 @@ transform_ms({match_list, Line, {A, B}}, State) ->
     {A1, State1} = lists:mapfoldl(fun transform_mss/2, State, A),
     {B1, State2} = transform_mss(B, State1),
     {{match_list, Line, {A1, B1}}, State2};
+transform_ms({match_binary, Line, Fields}, State) ->
+    {MSs, State1} =
+        lists:mapfoldl(
+          fun transform_mss/2,
+          State,
+          [MS || {binary_field, _, {MS, _, _}} <- Fields]),
+    Fields1 =
+        [{binary_field, L, {MS,S,T}}
+         || {MS, {binary_field, L, {_,S,T}}} <- lists:zip(MSs, Fields)],
+    {{match_binary, Line, Fields1}, State1};
 transform_ms(
   {match_var, Line, VarName}=MS,
   {[{Local,Unsafe,NonLocal}|Rest]=Scopes,NFun,Funs,Module}) ->

@@ -6,6 +6,8 @@ enum tag {
   TAG_FRAME,
   TAG_TUPLE,
   TAG_LIST,
+  TAG_BINARY,
+  TAG_SUBBIN,
 };
 
 #define TAG(X) ((X)&0b1111)
@@ -15,6 +17,21 @@ enum tag {
 #define PFRAME(X) ((struct frame *)(X))
 #define PLIST(X) ((struct list *)(X))
 #define PTUPLE(X) ((struct tuple *)(X))
+#define PBINARY(X) ((struct binary *)(X))
+#define PSUBBIN(X) ((struct subbin *)(X))
+
+#define CBINARY(N, S) struct binary b_##N = {sizeof(S)-1, S};
+#define CSUBBIN(N, S)                                  \
+  CBINARY(N, S);                                       \
+  struct {                                             \
+    struct block_header header;                        \
+    struct subbin s;                                   \
+  } __attribute__((packed)) c_##N = {                  \
+    .header = {.marked = 1, .tag = TAG_SUBBIN},        \
+    .s = {&b_##N, 0, sizeof(S)-1}                      \
+  };                                                   \
+
+#define L(X) (T)(((struct block_header *)&(X))+1)
 
 #define I(X) (((X)<<4)|TAG_INT)
 #define A(X) (((X)<<4)|TAG_ATOM)
@@ -67,6 +84,17 @@ struct list {
 struct tuple {
   T n;
   T elements[];
+};
+
+struct binary {
+  T n;
+  char data[];
+};
+
+struct subbin {
+  struct binary *bin;
+  T offset;
+  T length;
 };
 
 struct frame *stack = NULL;
@@ -124,12 +152,13 @@ void *pop_frame(T result) {
 #define nil A(0)
 
 void gc_mark() {
-  void *terms[default_pool.free_blocks * 2 + 1];
+  void *terms[default_pool.used_blocks];
   int top = -1;
   void visit_term(T t) {
     if (!IS_POINTER(t)) return;
     void *p = (void *)t;
-    if (p == NULL) return;
+    if (p == NULL)
+      return;
     if (term_get_mark(p)) return;
     term_set_mark(p);
     top += 1;
@@ -145,6 +174,7 @@ void gc_mark() {
       for(i=0;i<PFRAME(current)->n;i++) {
         visit_term(PFRAME(current)->vars[i]);
       }
+      visit_term((T)PFRAME(current)->next_frame);
       break;
     case TAG_LIST:
       visit_term(PLIST(current)->hd);
@@ -155,8 +185,26 @@ void gc_mark() {
         visit_term(PTUPLE(current)->elements[i]);
       }
       break;
+    case TAG_BINARY:
+      break;
+    case TAG_SUBBIN:
+      visit_term((T)(PSUBBIN(current)->bin));
+      break;
     default:
       BADMATCH;
     }
   }
-};
+}
+
+
+struct subbin * binary_alloc(T n) {
+  struct binary *bin = term_alloc(sizeof(struct binary) + n);
+  term_set_tag(bin, TAG_BINARY);
+  bin->n = 0;
+  struct subbin *sb = term_alloc(sizeof(struct subbin));
+  term_set_tag(sb, TAG_SUBBIN);
+  sb->bin = bin;
+  sb->offset = 0;
+  sb->length = 0;
+  return sb;
+}

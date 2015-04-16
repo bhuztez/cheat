@@ -2,8 +2,9 @@
 
 -export([transform/2]).
 
-transform({Entry, NIFAtomList, AtomList, NFList, FNList, _LitList}, #{libdir := Paths}) ->
+transform({Entry, NIFAtomList, AtomList, NFList, FNList, LitList}, #{libdir := Paths}) ->
     FNList1 = lists:zip(lists:seq(0, length(FNList)-1), FNList),
+    LitList1 = lists:zip(lists:seq(0, length(LitList)-1), LitList),
     FileNames = lists:usort([FileName || #{filename := FileName} <- NFList ]),
 
     [read_file(Paths, "alloc.c"),
@@ -16,6 +17,11 @@ transform({Entry, NIFAtomList, AtomList, NFList, FNList, _LitList}, #{libdir := 
      "char *ATOM[] = {\n  NULL,\n",
      [io_lib:format("  \"~s\",~n", [Atom]) || Atom <- AtomList],
      "};\n",
+     [gen_lit(Lit) || Lit <- LitList1],
+     "T L[] = {\n",
+     [io_lib:format("  L(c_~w),~n", [N]) || N <- lists:seq(0, length(LitList)-1)],
+     "};\n",
+
      "T (*N[])() = {\n",
      [io_lib:format("  ~s,~n", [CName]) || #{cname := CName} <- NFList],
      "};\n",
@@ -101,3 +107,6 @@ gen_var({fn, N}) ->
 
 gen_vars(Vars) ->
     string:join([gen_var(V) || V <- Vars], ",").
+
+gen_lit({N, {string, S}}) ->
+    io_lib:format("CSUBBIN(~w,~s);~n", [N,S]).

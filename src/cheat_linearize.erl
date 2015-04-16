@@ -44,12 +44,10 @@ transform_expr({make_fun, Line, {{atom,_,M},{atom,_,F},{integer,_,A}}},
                {NLabel, NVar, VarNameMap}) ->
     {{NVar, [{line, Line}, {literal, {funref,{M,F,A}}, NVar}]},
      {NLabel, NVar+1, VarNameMap}};
-
 transform_expr({make_fun, Line, {M,F,A,[]}},
                {NLabel, NVar, VarNameMap}) ->
     {{NVar, [{line, Line}, {literal, {funref,{M,F,A}}, NVar}]},
      {NLabel, NVar+1, VarNameMap}};
-
 transform_expr({make_fun, Line, {M,F,A,VarNames}}, {NLabel, NVar, VarNameMap}) ->
     VarNums = [ dict:fetch(VarName, VarNameMap) || VarName <- VarNames ],
     {{NVar+2,
@@ -58,7 +56,6 @@ transform_expr({make_fun, Line, {M,F,A,VarNames}}, {NLabel, NVar, VarNameMap}) -
        {literal, {funref, {M,F,A}}, NVar+1},
        {call, NVar, [NVar+1|VarNums], NVar+2}]},
      {NLabel, NVar+3, VarNameMap}};
-
 transform_expr({call, Line, {Fun, Exprs}}, State) ->
     {[FunNum|VarNums], Insts, {NLabel, NVar, VarNameMap}} =
         transform_exprs([Fun|Exprs], State),
@@ -67,7 +64,6 @@ transform_expr({call, Line, {Fun, Exprs}}, State) ->
          {call, FunNum, VarNums, NVar}],
     {{NVar, Insts ++ Insts1},
      {NLabel, NVar+1, VarNameMap}};
-
 transform_expr({'case', Line, {Exprs, Clauses}}, State) ->
     {VarNums, Insts, {NLabel, NVar, VarNameMap}} = transform_exprs(Exprs, State),
     {Insts1, {OutLabel, OutVar, VarNums, NLabel1, NVar1, VarNameMap}} =
@@ -79,11 +75,11 @@ transform_expr({'case', Line, {Exprs, Clauses}}, State) ->
     Insts2 = Insts ++ lists:append(Insts1) ++ [{line, Line}, badmatch, {label, OutLabel}],
     {{OutVar, Insts2}, {NLabel1, NVar1, VarNameMap}}.
 
+
 transform_exprs(Exprs, State) ->
     {VarNumsAndInsts, State1} = lists:mapfoldl(fun transform_expr/2, State, Exprs),
     {VarNums, Insts} = lists:unzip(VarNumsAndInsts),
     {VarNums, lists:append(Insts), State1}.
-
 
 
 transform_clause({MSs, [], []}, {OutLabel, OutVar, [VarNum], NLabel, NVar, VarNameMap}) ->
@@ -189,6 +185,29 @@ transform_ms({match_list, Line, {[H|T], B}}, {VarNum, EndLabel, NLabel, NVar, Va
     Insts3 = Insts ++ Insts1 ++ Insts2,
 
     {Insts3, {VarNum, EndLabel, NLabel2, NVar2, VarNameMap}};
+transform_ms({match_binary, Line, Fields}, {VarNum, EndLabel, NLabel, NVar, VarNameMap}) ->
+    {Bytes, Infinity} = count_bytes(Fields),
+    Insts =
+        [{line, Line},
+         case Infinity of
+             true ->
+                 {literal, {funref, {std, is_binary_gt, 2}}, NVar};
+             false ->
+                 {literal, {funref, {std, is_binary, 2}}, NVar}
+         end,
+         {literal, {integer, Bytes}, NVar+1},
+         {call, NVar, [VarNum, NVar+1], NVar+2},
+         {branch, NVar+2, EndLabel}
+        ],
+
+    {Insts1, {_, VarNum, EndLabel, NLabel1, NVar1, VarNameMap}} =
+        lists:mapfoldl(
+          fun transform_match_binary_segment/2,
+          {0, VarNum, EndLabel, NLabel, NVar+3, VarNameMap},
+          Fields),
+
+    Insts2 = Insts ++ lists:append(Insts1),
+    {Insts2, {VarNum, EndLabel, NLabel1, NVar1, VarNameMap}};
 transform_ms({match_ignore, _, _}, State) ->
     {[], State}.
 
@@ -204,6 +223,62 @@ transform_match_tuple_element({N,MS}, {VarNum, EndLabel, NLabel, NVar, VarNameMa
 
     Insts2 = Insts ++ Insts1,
     {Insts2, {VarNum, EndLabel, NLabel1, NVar1, VarNameMap}}.
+
+
+count_bytes([], Acc) ->
+    {Acc, false};
+count_bytes([{binary_field, _, {_, infinity, binary}}], Acc) ->
+    {Acc, true};
+count_bytes([{_, _, {_, Size, _}}|T], Acc) 
+  when is_integer(Size) ->
+    count_bytes(T, Acc + Size).
+
+
+count_bytes(Fields) ->
+    count_bytes(Fields, 0).
+
+
+transform_match_binary_segment({binary_field, Line, {MS, 1, integer}}, {Offset, VarNum, EndLabel, NLabel, NVar, VarNameMap}) ->
+    Insts =
+        [ {line, Line},
+          {literal, {funref, {std, binary_at, 2}}, NVar},
+          {literal, {integer, Offset}, NVar+1},
+          {call, NVar, [VarNum, NVar+1], NVar+2}
+        ],
+
+    {Insts1, {EndLabel, NLabel1, NVar1, VarNameMap}} =
+        transform_mss({NVar+2, MS}, {EndLabel, NLabel, NVar+3, VarNameMap}),
+
+    Insts2 = Insts ++ Insts1,
+    {Insts2, {Offset + 1, VarNum, EndLabel, NLabel1, NVar1, VarNameMap}};
+transform_match_binary_segment({binary_field, Line, {MS, Size, binary}}, {Offset, VarNum, EndLabel, NLabel, NVar, VarNameMap}) ->
+    Insts =
+        [ {line, Line},
+          {literal, {funref, {std, binary_pos, 3}}, NVar},
+          {literal, {integer, Offset}, NVar+1},
+          {literal,
+           case Size of
+               infinity ->
+                   {atom, infinity};
+               _ ->
+                   {integer, Size}
+           end,
+           NVar+2},
+          {call, NVar, [VarNum, NVar+1, NVar+2], NVar+3}
+        ],
+
+    {Insts1, {EndLabel, NLabel1, NVar1, VarNameMap}} =
+        transform_mss({NVar+3, MS}, {EndLabel, NLabel, NVar+4, VarNameMap}),
+
+    Insts2 = Insts ++ Insts1,
+    Offset1 =
+        case Size of
+            infinity ->
+                infinity;
+            _ ->
+                Offset+Size
+        end,
+    {Insts2, {Offset1, VarNum, EndLabel, NLabel1, NVar1, VarNameMap}}.
 
 
 transform_mss({VarNum, MSs}, {EndLabel, NLabel, NVar, VarNameMap}) ->
